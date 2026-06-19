@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Climbfolio Mockup",
+    "slug": "climbfolio-rn-mockup",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "climbfolio",
+    "plugins": ["expo-router"],
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF7F1"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
