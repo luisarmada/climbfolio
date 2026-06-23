@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { PropsWithChildren } from 'react';
 import { StyleProp, StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
-import { colors, radius, spacing } from '../design/tokens';
+import { colors, fonts, radius, spacing } from '../design/tokens';
 
 type ButtonVariant = 'primary' | 'secondary' | 'destructive';
 
@@ -71,6 +71,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: colors.white,
+    fontFamily: fonts.extraBold,
     fontSize: 16,
     fontWeight: '800',
   },

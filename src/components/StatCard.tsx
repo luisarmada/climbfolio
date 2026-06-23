@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { Card } from './Card';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 
 type Accent = 'mint' | 'amber' | 'lavender' | 'coral' | 'sky';
 
@@ -74,8 +74,8 @@ const styles = StyleSheet.create({
   },
   compactValue: {
     fontSize: 25,
-    lineHeight: 29,
-    letterSpacing: -1,
+    lineHeight: 30,
+    letterSpacing: 0,
   },
   label: {
     ...typography.label,
@@ -87,12 +87,14 @@ const styles = StyleSheet.create({
   },
   trend: {
     color: colors.muted,
+    fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 17,
     marginTop: spacing.lg,
   },
   trendStrong: {
     color: colors.success,
+    fontFamily: fonts.extraBold,
     fontWeight: '800',
   },
   badge: {
@@ -100,6 +102,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,150,102,0.18)',
     borderRadius: radius.pill,
     color: '#F06F33',
+    fontFamily: fonts.extraBold,
     fontSize: 12,
     fontWeight: '800',
     marginTop: spacing.lg,

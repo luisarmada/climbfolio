@@ -45,7 +45,8 @@ type WebDatabaseState = {
   sessions: SessionRow[];
 };
 
-const storageKey = 'climbfolio.webDatabase.v1';
+const legacyStorageKey = ['climb', 'folio.webDatabase.v1'].join('');
+const storageKey = 'climbbook.webDatabase.v1';
 
 function createEmptyState(): WebDatabaseState {
   return {
@@ -65,10 +66,14 @@ function readState(): WebDatabaseState {
     return createEmptyState();
   }
 
-  const storedState = localStorage.getItem(storageKey);
+  const storedState = localStorage.getItem(storageKey) ?? localStorage.getItem(legacyStorageKey);
 
   if (!storedState) {
     return createEmptyState();
+  }
+
+  if (!localStorage.getItem(storageKey)) {
+    localStorage.setItem(storageKey, storedState);
   }
 
   try {

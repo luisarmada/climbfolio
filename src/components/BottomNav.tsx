@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, usePathname, useRouter } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, spacing } from '../design/tokens';
+import { colors, fonts, spacing } from '../design/tokens';
 
-export type ScreenKey = 'home' | 'activity' | 'profile';
+export type ScreenKey = 'home' | 'climb' | 'profile';
 
 type NavItem = {
   key: ScreenKey;
@@ -14,13 +14,13 @@ type NavItem = {
 
 const items: NavItem[] = [
   { key: 'home', href: '/', label: 'Home', icon: 'home' },
-  { key: 'activity', href: '/activity', label: 'Activity', icon: 'bar-chart-2' },
+  { key: 'climb', href: '/climb', label: 'Climb', icon: 'triangle' },
   { key: 'profile', href: '/profile', label: 'Profile', icon: 'user' },
 ];
 
 function getActiveScreen(pathname: string): ScreenKey {
-  if (pathname.startsWith('/activity')) {
-    return 'activity';
+  if (pathname.startsWith('/climb')) {
+    return 'climb';
   }
 
   if (pathname.startsWith('/profile')) {
@@ -44,6 +44,7 @@ export function BottomNav() {
             <TouchableOpacity
               key={item.key}
               activeOpacity={0.7}
+              accessibilityLabel={item.label}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
               onPress={() => router.push(item.href)}
@@ -68,27 +69,31 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     paddingBottom: spacing.md,
-    paddingHorizontal: 42,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
     position: 'absolute',
     right: 0,
   },
   nav: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    width: '100%',
   },
   item: {
     alignItems: 'center',
+    flex: 1,
     gap: 4,
-    minWidth: 72,
+    justifyContent: 'center',
+    minHeight: 50,
   },
   label: {
     color: colors.muted,
+    fontFamily: fonts.semiBold,
     fontSize: 12,
     fontWeight: '600',
   },
   activeLabel: {
     color: colors.charcoal,
+    fontFamily: fonts.extraBold,
     fontWeight: '800',
   },
   homeIndicator: {

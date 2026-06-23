@@ -14,8 +14,10 @@ import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 
 const destructiveRed = '#B85A3B';
+const longSessionThresholdSeconds = 6 * 60 * 60;
 
 type EditTarget = TimelineItem | null;
+type EndSessionMode = 'default' | 'sent' | 'incomplete' | 'discard';
 
 type EditDraft = {
   attemptCount: number;
@@ -191,6 +193,8 @@ export function ActiveSessionScreen() {
   const addAttempt = useActiveSessionStore((state) => state.addAttempt);
   const climbs = useActiveSessionStore((state) => state.climbs);
   const deleteClimb = useActiveSessionStore((state) => state.deleteClimb);
+  const discardActiveClimb = useActiveSessionStore((state) => state.discardActiveClimb);
+  const discardSession = useActiveSessionStore((state) => state.discardSession);
   const endSession = useActiveSessionStore((state) => state.endSession);
   const error = useActiveSessionStore((state) => state.error);
   const finishActiveClimb = useActiveSessionStore((state) => state.finishActiveClimb);
@@ -209,22 +213,54 @@ export function ActiveSessionScreen() {
   const selectedQuickGradeIndex = Math.max(0, climbGrades.indexOf(selectedWarmUpGrade));
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [longSessionPromptId, setLongSessionPromptId] = useState<string | null>(null);
+  const [isLongSessionPromptVisible, setIsLongSessionPromptVisible] = useState(false);
 
   useEffect(() => {
     void restoreActiveSession();
   }, [restoreActiveSession]);
 
+  useEffect(() => {
+    if (!activeSession || longSessionPromptId === activeSession.id || elapsedSeconds < longSessionThresholdSeconds) {
+      return;
+    }
+
+    setLongSessionPromptId(activeSession.id);
+    setIsLongSessionPromptVisible(true);
+  }, [activeSession, elapsedSeconds, longSessionPromptId]);
+
   async function handleStartSession() {
     await startSession();
   }
 
-  async function handleEndSession() {
+  async function handleEndSession(mode: EndSessionMode = 'default') {
     setIsEndConfirmVisible(false);
+    setIsLongSessionPromptVisible(false);
+
+    if (mode === 'sent') {
+      await finishActiveClimb(true);
+    }
+
+    if (mode === 'incomplete') {
+      await finishActiveClimb(false);
+    }
+
+    if (mode === 'discard') {
+      await discardActiveClimb();
+    }
+
     const endedSession = await endSession();
 
     if (endedSession) {
       router.replace({ pathname: '/session/summary', params: { sessionId: endedSession.id } });
     }
+  }
+
+  async function handleDiscardSession() {
+    setIsLongSessionPromptVisible(false);
+    setIsEndConfirmVisible(false);
+    await discardSession();
+    router.replace('/');
   }
 
   async function handleAddNewClimb() {
@@ -331,9 +367,24 @@ export function ActiveSessionScreen() {
       await Promise.all(existingIdsToDelete.map((climbId) => deleteClimb(climbId)));
 
       if (desiredCount > currentIds.length) {
-        await Promise.all(
+        const addedClimbs = await Promise.all(
           Array.from({ length: desiredCount - currentIds.length }).map(() => quickAddWarmUpClimb(editDraft.grade)),
         );
+        const addedClimbIds = addedClimbs.map((climb) => climb?.id).filter((id): id is string => Boolean(id));
+        const reorderedItems = timelineItems.map((item) => {
+          if (item !== editTarget) {
+            return item;
+          }
+
+          return {
+            ...item,
+            climbIds: [...existingIdsToKeep, ...addedClimbIds],
+            count: desiredCount,
+            grade: editDraft.grade,
+          };
+        });
+
+        await reorderTimeline(flattenTimelineItemIds(reorderedItems));
       }
     } else {
       await updateLoggedClimb(editTarget.climb.id, {
@@ -537,26 +588,26 @@ export function ActiveSessionScreen() {
         />
       )}
 
-      <Modal animationType="fade" transparent visible={Boolean(editTarget && editDraft)}>
-        <View style={styles.modalOverlay}>
-          <AppCard style={styles.editCard}>
-            <View style={styles.editHeader}>
-              <Text style={styles.confirmTitle}>Quick edit</Text>
-              <TouchableOpacity
-                activeOpacity={0.76}
-                accessibilityLabel="Close quick edit"
-                accessibilityRole="button"
-                onPress={() => {
-                  setEditTarget(null);
-                  setEditDraft(null);
-                }}
-                style={styles.editCloseButton}
-              >
-                <Feather name="x" size={18} color={colors.charcoal} />
-              </TouchableOpacity>
-            </View>
+      {editTarget && editDraft ? (
+        <Modal animationType="fade" transparent visible>
+          <View style={styles.modalOverlay}>
+            <AppCard style={styles.editCard}>
+              <View style={styles.editHeader}>
+                <Text style={styles.confirmTitle}>Quick edit</Text>
+                <TouchableOpacity
+                  activeOpacity={0.76}
+                  accessibilityLabel="Close quick edit"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setEditTarget(null);
+                    setEditDraft(null);
+                  }}
+                  style={styles.editCloseButton}
+                >
+                  <Feather name="x" size={18} color={colors.charcoal} />
+                </TouchableOpacity>
+              </View>
 
-            {editDraft ? (
               <ScrollView contentContainerStyle={styles.editContent}>
                 <View style={styles.editRow}>
                   <Text style={styles.editLabel}>Grade</Text>
@@ -739,34 +790,92 @@ export function ActiveSessionScreen() {
 
                 <AppButton disabled={isLoading} icon="check" onPress={() => void saveEditDraft()} title="Save Changes" />
               </ScrollView>
-            ) : null}
-          </AppCard>
-        </View>
-      </Modal>
+            </AppCard>
+          </View>
+        </Modal>
+      ) : null}
 
       <Modal animationType="fade" transparent visible={isEndConfirmVisible}>
         <View style={styles.modalOverlay}>
           <AppCard style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>End session?</Text>
+            <Text style={styles.confirmTitle}>{activeClimb ? 'End with active climb?' : 'End session?'}</Text>
             <Text style={styles.confirmCopy}>
               {activeClimb
-                ? 'Your active climb will be saved before the session ends.'
+                ? 'Choose how to save the climb you are currently logging before the session ends.'
                 : 'This will stop the timer and save this session.'}
             </Text>
             <View style={styles.confirmActions}>
-              <AppButton
-                disabled={isLoading}
-                icon="flag"
-                onPress={handleEndSession}
-                title={isLoading ? 'Ending Session...' : 'End Session'}
-                variant="destructive"
-              />
+              {activeClimb ? (
+                <>
+                  <AppButton
+                    disabled={isLoading}
+                    icon="check-circle"
+                    onPress={() => void handleEndSession('sent')}
+                    title={isLoading ? 'Ending Session...' : 'Sent It + End'}
+                  />
+                  <AppButton
+                    disabled={isLoading}
+                    icon="x-circle"
+                    onPress={() => void handleEndSession('incomplete')}
+                    title="Give Up + End"
+                    variant="secondary"
+                  />
+                  <AppButton
+                    disabled={isLoading}
+                    icon="trash-2"
+                    onPress={() => void handleEndSession('discard')}
+                    title="Discard Climb + End"
+                    variant="destructive"
+                  />
+                </>
+              ) : (
+                <AppButton
+                  disabled={isLoading}
+                  icon="flag"
+                  onPress={() => void handleEndSession()}
+                  title={isLoading ? 'Ending Session...' : 'End Session'}
+                  variant="destructive"
+                />
+              )}
               <AppButton
                 disabled={isLoading}
                 icon="x"
                 onPress={() => setIsEndConfirmVisible(false)}
                 title="Cancel"
                 variant="secondary"
+              />
+            </View>
+          </AppCard>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={isLongSessionPromptVisible}>
+        <View style={styles.modalOverlay}>
+          <AppCard style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Continue old session?</Text>
+            <Text style={styles.confirmCopy}>
+              This session has been running for more than 6 hours. Continue logging, end it now, or discard it.
+            </Text>
+            <View style={styles.confirmActions}>
+              <AppButton
+                disabled={isLoading}
+                icon="play"
+                onPress={() => setIsLongSessionPromptVisible(false)}
+                title="Continue"
+              />
+              <AppButton
+                disabled={isLoading}
+                icon="flag"
+                onPress={() => void handleEndSession()}
+                title="End Session"
+                variant="secondary"
+              />
+              <AppButton
+                disabled={isLoading}
+                icon="trash-2"
+                onPress={() => void handleDiscardSession()}
+                title="Discard Session"
+                variant="destructive"
               />
             </View>
           </AppCard>

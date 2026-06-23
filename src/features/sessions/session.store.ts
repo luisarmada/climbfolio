@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { Climb, Session } from '../../domain/models';
+import { hapticsService } from '../../platform/haptics.service';
+import { liveActivityService } from '../../platform/live-activity.service';
 import { climbService, StartClimbInput } from '../climbs';
+import { createActiveSessionSnapshot } from './session.snapshot';
 import { sessionService } from './session.service';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
 
@@ -15,6 +18,7 @@ type ActiveSessionStore = {
   clearError: () => void;
   deleteClimb: (climbId: string) => Promise<Climb | null>;
   discardActiveClimb: () => Promise<Climb | null>;
+  discardSession: () => Promise<Session | null>;
   endSession: () => Promise<Session | null>;
   finishActiveClimb: (completed: boolean) => Promise<Climb | null>;
   quickAddWarmUpClimb: (grade: string) => Promise<Climb | null>;
@@ -53,6 +57,20 @@ function getStatePatch(activeSession: ActiveSessionState | null) {
   };
 }
 
+async function updateLiveActivity(activeSession: ActiveSessionState | null) {
+  if (!activeSession || !liveActivityService.isSupported()) {
+    return;
+  }
+
+  await liveActivityService.updateSessionActivity(
+    createActiveSessionSnapshot({
+      activeClimb: activeSession.activeClimb,
+      session: activeSession.session,
+      totals: activeSession.totals,
+    }),
+  );
+}
+
 export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
   activeClimb: null,
   activeSession: null,
@@ -75,6 +93,14 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
         error: null,
         isLoading: false,
       });
+      await hapticsService.notify('success');
+      await liveActivityService.startSessionActivity(
+        createActiveSessionSnapshot({
+          activeClimb: activeSession.activeClimb,
+          session: activeSession.session,
+          totals: activeSession.totals,
+        }),
+      );
 
       return activeSession.session;
     } catch (error) {
@@ -93,6 +119,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
         error: null,
         isLoading: false,
       });
+      await updateLiveActivity(activeSession);
 
       return activeSession?.session ?? null;
     } catch (error) {
@@ -126,8 +153,39 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
         isLoading: false,
         totals: emptyTotals,
       });
+      await hapticsService.notify('success');
+      await liveActivityService.endSessionActivity();
 
       return endedSession;
+    } catch (error) {
+      set({ error: getErrorMessage(error), isLoading: false });
+      throw error;
+    }
+  },
+
+  async discardSession() {
+    const session = get().activeSession;
+
+    if (!session) {
+      return null;
+    }
+
+    set({ error: null, isLoading: true });
+
+    try {
+      const discardedSession = await sessionService.discardSession(session.id);
+      set({
+        activeClimb: null,
+        activeSession: null,
+        climbs: [],
+        error: null,
+        isLoading: false,
+        totals: emptyTotals,
+      });
+      await hapticsService.notify('warning');
+      await liveActivityService.endSessionActivity();
+
+      return discardedSession;
     } catch (error) {
       set({ error: getErrorMessage(error), isLoading: false });
       throw error;
@@ -151,6 +209,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
         error: null,
         isLoading: false,
       });
+      await hapticsService.notify('selection');
+      await updateLiveActivity(activeSession);
 
       const activeClimb = activeSession?.activeClimb;
 
@@ -179,6 +239,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       await climbService.addAttempt(activeClimb.id);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('selection');
+      await updateLiveActivity(refreshedSession);
 
       return refreshedSession?.activeClimb ?? null;
     } catch (error) {
@@ -201,6 +263,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       await climbService.undoAttempt(activeClimb.id);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('selection');
+      await updateLiveActivity(refreshedSession);
 
       return refreshedSession?.activeClimb ?? null;
     } catch (error) {
@@ -221,6 +285,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
     try {
       const updatedClimb = await climbService.setCompleted(activeClimb.id, completed);
       set({ activeClimb: updatedClimb, error: null, isLoading: false });
+      await hapticsService.notify('selection');
 
       return updatedClimb;
     } catch (error) {
@@ -243,6 +308,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       await climbService.updateClimb(activeClimb.id, input);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await updateLiveActivity(refreshedSession);
 
       return refreshedSession?.activeClimb ?? null;
     } catch (error) {
@@ -264,6 +330,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       const updatedClimb = await climbService.updateLoggedClimb(climbId, input);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await updateLiveActivity(refreshedSession);
 
       return updatedClimb;
     } catch (error) {
@@ -285,6 +352,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       await climbService.reorderSessionClimbs(activeSession.id, climbIds);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await updateLiveActivity(refreshedSession);
     } catch (error) {
       set({ error: getErrorMessage(error), isLoading: false });
       throw error;
@@ -305,6 +373,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       const finishedClimb = await climbService.finishClimb(activeClimb.id, completed);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('success');
+      await updateLiveActivity(refreshedSession);
 
       return finishedClimb;
     } catch (error) {
@@ -326,6 +396,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       const warmUpClimb = await climbService.logWarmUpClimb({ grade, sessionId: activeSession.id });
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('selection');
+      await updateLiveActivity(refreshedSession);
 
       return warmUpClimb;
     } catch (error) {
@@ -348,6 +420,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       const discardedClimb = await climbService.discardClimb(activeClimb.id);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('warning');
+      await updateLiveActivity(refreshedSession);
 
       return discardedClimb;
     } catch (error) {
@@ -369,6 +443,8 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
       const deletedClimb = await climbService.deleteClimb(climbId);
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
+      await hapticsService.notify('warning');
+      await updateLiveActivity(refreshedSession);
 
       return deletedClimb;
     } catch (error) {

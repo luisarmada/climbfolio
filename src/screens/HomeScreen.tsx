@@ -1,74 +1,131 @@
+import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatCard } from '../components/StatCard';
-import { colors, radius, spacing, typography } from '../design/tokens';
-import { useActiveSessionStore } from '../features/sessions';
+import { colors, fonts, radius, spacing, typography } from '../design/tokens';
+import { AggregateStats, sessionSummaryService } from '../features/summaries';
+
+const emptyStats: AggregateStats = {
+  averageAttemptsPerClimb: 0,
+  averageClimbsPerSession: 0,
+  averageSessionDurationSeconds: null,
+  completedClimbs: 0,
+  completionRate: 0,
+  highestGradeAttempted: null,
+  highestGradeCompleted: null,
+  mostClimbedGrade: null,
+  mostCommonColour: null,
+  mostCommonHoldType: null,
+  sessions: 0,
+  totalAttempts: 0,
+  totalClimbs: 0,
+};
+
+const friendHighlights = [
+  {
+    subtitle: 'Lena logged a strong board session',
+    title: 'New high point',
+    stats: [
+      { label: 'Sent', value: 'V4' },
+      { label: 'Climbs', value: '9' },
+      { label: 'Attempts', value: '18' },
+    ],
+  },
+  {
+    subtitle: 'Sam wrapped a short lunch climb',
+    title: 'Quick session',
+    stats: [
+      { label: 'Time', value: '32m' },
+      { label: 'Sent', value: '6' },
+      { label: 'Best', value: 'V3' },
+    ],
+  },
+];
 
 export function HomeScreen() {
-  const router = useRouter();
-  const error = useActiveSessionStore((state) => state.error);
-  const isLoading = useActiveSessionStore((state) => state.isLoading);
-  const startSession = useActiveSessionStore((state) => state.startSession);
+  const [lifetimeStats, setLifetimeStats] = useState<AggregateStats>(emptyStats);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
+  const [weeklyStreak, setWeeklyStreak] = useState(0);
 
-  async function handleStartSession() {
-    await startSession();
-    router.push('/session/active');
-  }
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadHomeStats() {
+      const [nextStats, nextWeeklyStreak] = await Promise.all([
+        sessionSummaryService.getAggregateStats(),
+        sessionSummaryService.getWeeklyStreak(),
+      ]);
+
+      if (isMounted) {
+        setLifetimeStats(nextStats);
+        setWeeklyStreak(nextWeeklyStreak);
+        setIsStatsLoading(false);
+      }
+    }
+
+    void loadHomeStats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.eyebrow}>Good morning ☀️</Text>
-      <Text style={styles.title}>Ready to climb?</Text>
+      <Text style={styles.eyebrow}>Welcome back</Text>
+      <Text style={styles.title}>Home</Text>
 
-      <View style={styles.hero} accessibilityLabel="Minimal indoor climbing wall illustration">
-        <View style={styles.wallOne} />
-        <View style={styles.wallTwo} />
-        <View style={styles.wallLight} />
-        <View style={[styles.hold, styles.holdOne]} />
-        <View style={[styles.hold, styles.holdTwo]} />
-        <View style={[styles.hold, styles.holdThree]} />
-        <View style={[styles.hold, styles.holdFour]} />
-        <View style={[styles.hold, styles.holdFive]} />
-        <View style={[styles.leaf, styles.leafOne]} />
-        <View style={[styles.leaf, styles.leafTwo]} />
-        <View style={[styles.leaf, styles.leafThree]} />
+      <View style={styles.streakFlair}>
+        <Feather name="zap" size={15} color={colors.charcoal} />
+        <Text style={styles.streakText}>{isStatsLoading ? '...' : `${weeklyStreak} week streak`}</Text>
       </View>
 
-      <TouchableOpacity
-        activeOpacity={0.86}
-        accessibilityRole="button"
-        disabled={isLoading}
-        onPress={handleStartSession}
-        style={[styles.cta, isLoading && styles.ctaDisabled]}
-      >
-        <View style={styles.ctaLeft}>
-          <Feather name="triangle" size={34} color={colors.white} />
-          <Text style={styles.ctaText}>{isLoading ? 'Starting Session...' : 'Start New Session'}</Text>
-        </View>
-        <View style={styles.ctaArrow}>
-          <Feather name="arrow-right" size={32} color={colors.charcoal} />
-        </View>
-      </TouchableOpacity>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      <SectionHeader
-        title="This Month"
-        right={
-          <View style={styles.dateFilter}>
-            <Feather name="calendar" size={16} color={colors.muted} />
-            <Text style={styles.dateText}>May 2025</Text>
-            <Feather name="chevron-down" size={16} color={colors.muted} />
-          </View>
-        }
-      />
+      <SectionHeader title="Lifetime Statistics" />
 
       <View style={styles.grid}>
-        <StatCard icon="triangle" accent="mint" value="12" label="Sessions" trend="20%" style={styles.stat} />
-        <StatCard icon="link" accent="amber" value="68" label="Climbs Logged" trend="15%" style={styles.stat} />
-        <StatCard icon="bar-chart-2" accent="lavender" value="214" label="Total Attempts" trend="18%" style={styles.stat} />
-        <StatCard icon="star" accent="coral" value="V5" label="Highest Completed" badge="NEW PB" style={styles.stat} />
+        <StatCard
+          icon="triangle"
+          accent="mint"
+          value={isStatsLoading ? '...' : String(lifetimeStats.sessions)}
+          label="Sessions"
+          style={styles.stat}
+        />
+        <StatCard
+          icon="link"
+          accent="amber"
+          value={isStatsLoading ? '...' : String(lifetimeStats.totalClimbs)}
+          label="Climbs Logged"
+          style={styles.stat}
+        />
+        <StatCard
+          icon="bar-chart-2"
+          accent="lavender"
+          value={isStatsLoading ? '...' : String(lifetimeStats.totalAttempts)}
+          label="Total Attempts"
+          style={styles.stat}
+        />
+        <StatCard
+          icon="star"
+          accent="coral"
+          value={isStatsLoading ? '...' : lifetimeStats.highestGradeCompleted ?? 'None'}
+          label="Highest Completed"
+          style={styles.stat}
+        />
+      </View>
+
+      <SectionHeader title="Friend Activity" />
+      <View style={styles.highlightList}>
+        {friendHighlights.map((highlight) => (
+          <ActivityHighlightCard
+            icon="users"
+            key={highlight.title}
+            stats={highlight.stats}
+            subtitle={highlight.subtitle}
+            title={highlight.title}
+          />
+        ))}
       </View>
     </ScrollView>
   );
@@ -82,134 +139,42 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: colors.charcoal,
+    fontFamily: fonts.bold,
     fontSize: 17,
     fontWeight: '700',
-    letterSpacing: -0.3,
+    letterSpacing: 0,
     marginBottom: 4,
-  },
-  title: {
-    ...typography.title,
-    color: colors.charcoal,
-  },
-  hero: {
-    backgroundColor: '#E8DED1',
-    borderColor: colors.stone,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    height: 170,
-    marginBottom: spacing.xl,
-    marginTop: spacing.xxl,
-    overflow: 'hidden',
-  },
-  wallOne: {
-    backgroundColor: '#C9C8C3',
-    height: '120%',
-    left: '23%',
-    position: 'absolute',
-    top: -10,
-    transform: [{ skewX: '-16deg' }],
-    width: '32%',
-  },
-  wallTwo: {
-    backgroundColor: '#969794',
-    height: '120%',
-    left: '47%',
-    position: 'absolute',
-    top: -10,
-    transform: [{ skewX: '-14deg' }],
-    width: '14%',
-  },
-  wallLight: {
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    height: '120%',
-    left: '12%',
-    position: 'absolute',
-    top: -10,
-    transform: [{ skewX: '-18deg' }],
-    width: '18%',
-  },
-  hold: {
-    borderRadius: 999,
-    height: 18,
-    position: 'absolute',
-    width: 26,
-  },
-  holdOne: { backgroundColor: '#F17642', left: '39%', top: 70, transform: [{ rotate: '-18deg' }] },
-  holdTwo: { backgroundColor: '#80BE84', left: '44%', top: 34, transform: [{ rotate: '12deg' }] },
-  holdThree: { backgroundColor: '#EFBF35', height: 42, right: 24, top: 58, width: 48, transform: [{ rotate: '-20deg' }] },
-  holdFour: { backgroundColor: '#7C5AC9', right: 95, top: 108, transform: [{ rotate: '16deg' }] },
-  holdFive: { backgroundColor: '#262A28', left: '54%', top: 112, transform: [{ rotate: '12deg' }] },
-  leaf: {
-    backgroundColor: '#2D5B47',
-    borderBottomLeftRadius: 999,
-    borderTopRightRadius: 999,
-    bottom: -8,
-    height: 78,
-    position: 'absolute',
-    width: 28,
-  },
-  leafOne: { left: 8, transform: [{ rotate: '-28deg' }] },
-  leafTwo: { backgroundColor: '#37694F', left: 28, transform: [{ rotate: '-8deg' }] },
-  leafThree: { backgroundColor: '#244936', left: 50, transform: [{ rotate: '18deg' }] },
-  cta: {
-    alignItems: 'center',
-    backgroundColor: '#202020',
-    borderRadius: 24,
-    flexDirection: 'row',
-    height: 88,
-    justifyContent: 'space-between',
-    paddingLeft: spacing.xxl,
-    paddingRight: spacing.lg,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 3,
-  },
-  ctaDisabled: {
-    opacity: 0.66,
-  },
-  ctaLeft: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.lg,
-  },
-  ctaText: {
-    color: colors.white,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.9,
-  },
-  ctaArrow: {
-    alignItems: 'center',
-    backgroundColor: colors.mint,
-    borderRadius: radius.pill,
-    height: 58,
-    justifyContent: 'center',
-    width: 58,
-  },
-  errorText: {
-    color: '#B85A3B',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: spacing.md,
-  },
-  dateFilter: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  dateText: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '600',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
   },
+  highlightList: {
+    gap: spacing.md,
+  },
   stat: {
     width: '48%',
+  },
+  streakFlair: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.amber,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  streakText: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  title: {
+    ...typography.title,
+    color: colors.charcoal,
   },
 });

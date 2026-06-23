@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Climbfolio Mockup",
-    "slug": "climbfolio-rn-mockup",
+    "name": "Climb Book",
+    "slug": "climb-book-rn-mockup",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "scheme": "climbfolio",
+    "scheme": "climbbook",
     "plugins": ["expo-router"],
     "assetBundlePatterns": ["**/*"],
     "ios": {

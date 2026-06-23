@@ -1,18 +1,59 @@
+import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatCard } from '../components/StatCard';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, fonts, radius, spacing, typography } from '../design/tokens';
+import { AggregateStats, formatDuration, formatMonthLabel, formatSessionDate, SessionSummary, sessionSummaryService } from '../features/summaries';
 
-const preferenceRows = [
-  { icon: 'bar-chart-2', title: 'Grade System', value: 'V Scale', accent: colors.mint },
-  { icon: 'grid', title: 'Default Activity View', value: 'General', accent: colors.amber },
-  { icon: 'bell', title: 'Notifications', value: 'On', accent: colors.lavender },
-  { icon: 'cloud', title: 'Data Storage', value: 'Local only', accent: colors.coral },
-] as const;
+const emptyStats: AggregateStats = {
+  averageAttemptsPerClimb: 0,
+  averageClimbsPerSession: 0,
+  averageSessionDurationSeconds: null,
+  completedClimbs: 0,
+  completionRate: 0,
+  highestGradeAttempted: null,
+  highestGradeCompleted: null,
+  mostClimbedGrade: null,
+  mostCommonColour: null,
+  mostCommonHoldType: null,
+  sessions: 0,
+  totalAttempts: 0,
+  totalClimbs: 0,
+};
 
 export function ProfileScreen() {
+  const router = useRouter();
+  const [monthlyStats, setMonthlyStats] = useState<AggregateStats>(emptyStats);
+  const [summaries, setSummaries] = useState<SessionSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSessions() {
+      const [nextSummaries, nextMonthlyStats] = await Promise.all([
+        sessionSummaryService.listCompletedSessionSummaries(),
+        sessionSummaryService.getMonthlyAggregateStats(),
+      ]);
+
+      if (isMounted) {
+        setMonthlyStats(nextMonthlyStats);
+        setSummaries(nextSummaries);
+        setIsLoading(false);
+      }
+    }
+
+    void loadSessions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topRow}>
@@ -20,91 +61,211 @@ export function ProfileScreen() {
           <Text style={styles.title}>Profile</Text>
           <Text style={styles.subtitle}>Your climbing identity</Text>
         </View>
-        <TouchableOpacity activeOpacity={0.7} style={styles.iconButton} accessibilityRole="button">
+        <TouchableOpacity
+          activeOpacity={0.7}
+          accessibilityLabel="Profile settings placeholder"
+          accessibilityRole="button"
+          style={styles.iconButton}
+        >
           <Feather name="settings" size={23} color={colors.charcoal} />
         </TouchableOpacity>
       </View>
 
       <AppCard style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <View style={styles.avatarBody} />
-          <View style={styles.avatarHead} />
-          <View style={[styles.avatarHold, styles.avatarHoldOne]} />
-          <View style={[styles.avatarHold, styles.avatarHoldTwo]} />
+        <View style={styles.profileTopRow}>
+          <View style={styles.avatar}>
+            <View style={styles.avatarBody} />
+            <View style={styles.avatarHead} />
+            <View style={[styles.avatarHold, styles.avatarHoldOne]} />
+            <View style={[styles.avatarHold, styles.avatarHoldTwo]} />
+          </View>
+          <View style={styles.profileCopy}>
+            <Text style={styles.profileName}>Local Climber</Text>
+            <Text style={styles.profileType}>Indoor boulderer</Text>
+            <Text style={styles.bestBadge}>Best Grade Placeholder</Text>
+          </View>
         </View>
-        <View style={styles.profileCopy}>
-          <Text style={styles.profileName}>Alex Carter</Text>
-          <Text style={styles.profileType}>Indoor boulderer</Text>
-          <Text style={styles.bestBadge}>Best Grade V5</Text>
-        </View>
-        <View style={styles.editCircle}>
-          <Feather name="edit-3" size={18} color={colors.charcoal} />
+
+        <View style={styles.profileStats}>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>24</Text>
+            <Text style={styles.profileStatLabel}>Climbing Sessions</Text>
+          </View>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>128</Text>
+            <Text style={styles.profileStatLabel}>Followers</Text>
+          </View>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>86</Text>
+            <Text style={styles.profileStatLabel}>Following</Text>
+          </View>
         </View>
       </AppCard>
 
-      <SectionHeader title="Lifetime Stats" />
-      <View style={styles.compactGrid}>
-        <StatCard compact icon="triangle" accent="mint" value="48" label="Sessions" style={styles.compactStat} />
-        <StatCard compact icon="link" accent="amber" value="315" label="Climbs" style={styles.compactStat} />
-        <StatCard compact icon="zap" accent="lavender" value="21" label="Day Streak" style={styles.compactStat} />
+      <View style={styles.monthHeader}>
+        <View style={styles.monthTitleRow}>
+          <Text style={styles.monthTitle}>This Month</Text>
+          <View style={styles.dateFilter}>
+            <Feather name="calendar" size={15} color={colors.muted} />
+            <Text style={styles.dateText}>{formatMonthLabel()}</Text>
+          </View>
+        </View>
+        <TouchableOpacity activeOpacity={0.7} accessibilityRole="button">
+          <Text style={styles.moreStatsText}>More stats</Text>
+        </TouchableOpacity>
       </View>
 
-      <SectionHeader title="Goals" />
-      <AppCard style={styles.goalCard}>
-        <View style={[styles.goalIcon, { backgroundColor: colors.lavender }]}>
-          <Feather name="target" size={26} color={colors.charcoal} />
-        </View>
-        <View style={styles.goalMain}>
-          <Text style={styles.goalTitle}>Climb 20 times this month</Text>
-          <View style={styles.goalTrack}>
-            <View style={styles.goalFill} />
-          </View>
-        </View>
-        <View style={styles.goalMeta}>
-          <Text style={styles.goalCount}>12 / 20</Text>
-          <Text style={styles.goalPercent}>60%</Text>
-        </View>
-      </AppCard>
+      <View style={styles.monthGrid}>
+        <StatCard compact icon="triangle" accent="mint" value={isLoading ? '...' : String(monthlyStats.sessions)} label="Sessions" style={styles.monthStat} />
+        <StatCard compact icon="link" accent="amber" value={isLoading ? '...' : String(monthlyStats.totalClimbs)} label="Climbs" style={styles.monthStat} />
+        <StatCard compact icon="bar-chart-2" accent="lavender" value={isLoading ? '...' : String(monthlyStats.totalAttempts)} label="Attempts" style={styles.monthStat} />
+        <StatCard
+          compact
+          icon="star"
+          accent="coral"
+          value={isLoading ? '...' : monthlyStats.highestGradeCompleted ?? 'None'}
+          label="Best"
+          style={styles.monthStat}
+        />
+      </View>
 
-      <SectionHeader title="Preferences" />
-      <AppCard style={styles.preferences}>
-        {preferenceRows.map((row, index) => (
-          <View key={row.title} style={[styles.prefRow, index === preferenceRows.length - 1 && styles.prefRowLast]}>
-            <View style={[styles.prefIcon, { backgroundColor: row.accent }]}>
-              <Feather name={row.icon} size={18} color={colors.charcoal} />
-            </View>
-            <Text style={styles.prefTitle}>{row.title}</Text>
-            <Text style={styles.prefValue}>{row.value}</Text>
-            <Feather name="chevron-right" size={18} color={colors.muted} />
+      <SectionHeader title="Per Session" />
+
+      {isLoading ? (
+        <AppCard style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Loading sessions...</Text>
+        </AppCard>
+      ) : summaries.length === 0 ? (
+        <AppCard style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Feather name="calendar" size={26} color={colors.charcoal} />
           </View>
-        ))}
-      </AppCard>
+          <Text style={styles.emptyTitle}>No sessions logged</Text>
+          <Text style={styles.emptyCopy}>Completed sessions will appear here after you end a climbing session.</Text>
+        </AppCard>
+      ) : (
+        <View style={styles.sessionList}>
+          {summaries.map((summary) => (
+            <ActivityHighlightCard
+              icon="clock"
+              key={summary.session.id}
+              onPress={() => router.push(`/session/${summary.session.id}`)}
+              stats={[
+                { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
+                { label: 'Climbs', value: String(summary.totalClimbs) },
+                { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
+              ]}
+              subtitle={`${summary.completedClimbs}/${summary.totalClimbs} sent - ${summary.totalAttempts} attempts`}
+              title={formatSessionDate(summary.session.startTime)}
+            />
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  avatar: {
+    backgroundColor: '#E6DDD0',
+    borderRadius: radius.pill,
+    height: 96,
+    overflow: 'hidden',
+    position: 'relative',
+    width: 96,
+  },
+  avatarBody: {
+    backgroundColor: '#5DB194',
+    borderRadius: 24,
+    height: 66,
+    left: 39,
+    position: 'absolute',
+    top: 26,
+    transform: [{ rotate: '18deg' }],
+    width: 36,
+  },
+  avatarHead: {
+    backgroundColor: '#232323',
+    borderRadius: radius.pill,
+    height: 22,
+    left: 42,
+    position: 'absolute',
+    top: 16,
+    width: 22,
+  },
+  avatarHold: {
+    backgroundColor: '#F07C43',
+    borderRadius: radius.pill,
+    height: 16,
+    position: 'absolute',
+    width: 22,
+  },
+  avatarHoldOne: {
+    right: 18,
+    top: 21,
+    transform: [{ rotate: '-20deg' }],
+  },
+  avatarHoldTwo: {
+    backgroundColor: colors.lavender,
+    bottom: 35,
+    right: 25,
+    transform: [{ rotate: '20deg' }],
+  },
+  bestBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(229,222,212,0.55)',
+    borderRadius: radius.pill,
+    color: '#494039',
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
   content: {
     paddingBottom: 130,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
-  topRow: {
-    alignItems: 'flex-start',
+  dateFilter: {
+    alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: spacing.xs,
   },
-  title: {
-    ...typography.title,
-    color: colors.charcoal,
-  },
-  subtitle: {
+  dateText: {
     color: colors.muted,
-    fontSize: 17,
-    fontWeight: '500',
-    letterSpacing: -0.35,
-    marginBottom: spacing.xl,
-    marginTop: spacing.sm,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  emptyCopy: {
+    color: colors.muted,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  emptyIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.sky,
+    borderRadius: radius.pill,
+    height: 58,
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    width: 58,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: spacing.xxl,
+  },
+  emptyTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
+    textAlign: 'center',
   },
   iconButton: {
     alignItems: 'center',
@@ -112,182 +273,108 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 38,
   },
-  profileCard: {
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  monthHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.lg,
-    minHeight: 174,
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    marginTop: spacing.xl,
+  },
+  monthStat: {
+    width: '48%',
+  },
+  monthTitle: {
+    ...typography.h2,
+    color: colors.charcoal,
+  },
+  monthTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: spacing.sm,
+  },
+  moreStatsText: {
+    color: '#6E55B5',
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  profileCard: {
     padding: spacing.lg,
-  },
-  avatar: {
-    backgroundColor: '#E6DDD0',
-    borderRadius: radius.pill,
-    height: 116,
-    overflow: 'hidden',
-    position: 'relative',
-    width: 116,
-  },
-  avatarBody: {
-    backgroundColor: '#5DB194',
-    borderRadius: 24,
-    height: 76,
-    left: 47,
-    position: 'absolute',
-    top: 31,
-    transform: [{ rotate: '18deg' }],
-    width: 42,
-  },
-  avatarHead: {
-    backgroundColor: '#232323',
-    borderRadius: radius.pill,
-    height: 25,
-    left: 50,
-    position: 'absolute',
-    top: 18,
-    width: 25,
-  },
-  avatarHold: {
-    backgroundColor: '#F07C43',
-    borderRadius: radius.pill,
-    height: 18,
-    position: 'absolute',
-    width: 24,
-  },
-  avatarHoldOne: {
-    right: 21,
-    top: 23,
-    transform: [{ rotate: '-20deg' }],
-  },
-  avatarHoldTwo: {
-    backgroundColor: colors.lavender,
-    bottom: 43,
-    right: 29,
-    transform: [{ rotate: '20deg' }],
   },
   profileCopy: {
     flex: 1,
   },
   profileName: {
     color: colors.charcoal,
+    fontFamily: fonts.extraBold,
     fontSize: 28,
     fontWeight: '800',
-    letterSpacing: -1.3,
+    letterSpacing: 0,
     lineHeight: 32,
+  },
+  profileStat: {
+    flex: 1,
+  },
+  profileStatLabel: {
+    color: colors.muted,
+    fontFamily: fonts.extraBold,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  profileStats: {
+    borderTopColor: colors.stone,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  profileStatValue: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  profileTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.lg,
   },
   profileType: {
     color: colors.muted,
+    fontFamily: fonts.medium,
     fontSize: 16,
     fontWeight: '500',
     marginBottom: spacing.md,
     marginTop: 4,
   },
-  bestBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(229,222,212,0.55)',
-    borderRadius: radius.pill,
-    color: '#494039',
-    fontSize: 13,
-    fontWeight: '800',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-  },
-  editCircle: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(250,247,241,0.8)',
-    borderColor: colors.stone,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  compactGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  compactStat: {
-    flex: 1,
-  },
-  goalCard: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  goalIcon: {
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    height: 54,
-    justifyContent: 'center',
-    width: 54,
-  },
-  goalMain: {
-    flex: 1,
-  },
-  goalTitle: {
-    color: colors.charcoal,
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  goalTrack: {
-    backgroundColor: colors.track,
-    borderRadius: radius.pill,
-    height: 9,
-    overflow: 'hidden',
-  },
-  goalFill: {
-    backgroundColor: colors.lavender,
-    borderRadius: radius.pill,
-    height: '100%',
-    width: '60%',
-  },
-  goalMeta: {
-    alignItems: 'flex-end',
-    minWidth: 58,
-  },
-  goalCount: {
-    color: colors.charcoal,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  goalPercent: {
-    color: '#8F6ED5',
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: spacing.md,
-  },
-  preferences: {
-    paddingHorizontal: spacing.lg,
-  },
-  prefRow: {
-    alignItems: 'center',
-    borderBottomColor: colors.stone,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    minHeight: 64,
+  sessionList: {
     gap: spacing.md,
   },
-  prefRowLast: {
-    borderBottomWidth: 0,
-  },
-  prefIcon: {
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  prefTitle: {
-    color: colors.charcoal,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  prefValue: {
+  subtitle: {
     color: colors.muted,
-    fontSize: 14,
-    fontWeight: '600',
+    fontFamily: fonts.medium,
+    fontSize: 17,
+    fontWeight: '500',
+    letterSpacing: 0,
+    marginBottom: spacing.xl,
+    marginTop: spacing.sm,
+  },
+  title: {
+    ...typography.title,
+    color: colors.charcoal,
+  },
+  topRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 });

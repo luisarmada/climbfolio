@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../design/tokens';
+import { colors, fonts, radius, spacing } from '../design/tokens';
 
 type Accent = 'mint' | 'amber' | 'lavender' | 'coral' | 'sky';
 
@@ -46,9 +46,10 @@ const styles = StyleSheet.create({
   label: {
     color: colors.charcoal,
     flex: 1.1,
+    fontFamily: fonts.semiBold,
     fontSize: 13,
     fontWeight: '600',
-    letterSpacing: -0.2,
+    letterSpacing: 0,
   },
   track: {
     backgroundColor: colors.track,
@@ -63,6 +64,7 @@ const styles = StyleSheet.create({
   },
   value: {
     color: colors.charcoal,
+    fontFamily: fonts.extraBold,
     fontSize: 14,
     fontWeight: '800',
     minWidth: 58,

@@ -1,6 +1,7 @@
 import { attemptRepository, climbRepository } from '../../data/repositories';
 import { Climb } from '../../domain/models';
 import { nowIso } from '../../utils/dates';
+import { secondsBetween } from '../../utils/time';
 import { warmUpHoldType } from './climb.options';
 import { StartClimbInput } from './climb.types';
 
@@ -23,10 +24,12 @@ export const climbService = {
     }
 
     const startedAt = nowIso();
+    const lastFinishedClimb = await climbRepository.getLastFinishedBySessionId(input.sessionId);
     const climb = await climbRepository.create({
       colour: input.colour ?? null,
       grade: input.grade,
       holdTypes: input.holdTypes ?? [],
+      restBeforeClimbSeconds: lastFinishedClimb?.endTime ? secondsBetween(lastFinishedClimb.endTime, startedAt) : null,
       sessionId: input.sessionId,
       startTime: startedAt,
     });
@@ -50,11 +53,13 @@ export const climbService = {
     const climb = await requireActiveClimb(climbId);
     const latestAttempt = await attemptRepository.getLastByClimbId(climb.id);
     const attemptNumber = (latestAttempt?.attemptNumber ?? 0) + 1;
+    const timestamp = nowIso();
 
     await attemptRepository.create({
       attemptNumber,
       climbId: climb.id,
-      timestamp: nowIso(),
+      restSincePreviousAttemptSeconds: latestAttempt ? secondsBetween(latestAttempt.timestamp, timestamp) : null,
+      timestamp,
     });
 
     const updatedClimb = await climbRepository.update(climb.id, { attemptCount: attemptNumber });
@@ -185,9 +190,11 @@ export const climbService = {
 
   async logWarmUpClimb(input: { grade: string; sessionId: string }): Promise<Climb> {
     const timestamp = nowIso();
+    const lastFinishedClimb = await climbRepository.getLastFinishedBySessionId(input.sessionId);
     const climb = await climbRepository.create({
       grade: input.grade,
       holdTypes: [warmUpHoldType],
+      restBeforeClimbSeconds: lastFinishedClimb?.endTime ? secondsBetween(lastFinishedClimb.endTime, timestamp) : null,
       sessionId: input.sessionId,
       startTime: timestamp,
     });

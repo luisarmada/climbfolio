@@ -34,31 +34,44 @@ export const radius = {
   pill: 999,
 } as const;
 
+export const fonts = {
+  bold: 'Manrope_700Bold',
+  extraBold: 'Manrope_800ExtraBold',
+  medium: 'Manrope_500Medium',
+  regular: 'Manrope_400Regular',
+  semiBold: 'Manrope_600SemiBold',
+} as const;
+
 export const typography = {
   title: {
+    fontFamily: fonts.extraBold,
     fontSize: 44,
     lineHeight: 48,
     fontWeight: '800' as const,
-    letterSpacing: -2.2,
+    letterSpacing: 0,
   },
   h2: {
+    fontFamily: fonts.extraBold,
     fontSize: 22,
     lineHeight: 27,
     fontWeight: '800' as const,
-    letterSpacing: -0.8,
+    letterSpacing: 0,
   },
   stat: {
+    fontFamily: fonts.extraBold,
     fontSize: 36,
     lineHeight: 40,
     fontWeight: '800' as const,
-    letterSpacing: -1.6,
+    letterSpacing: 0,
   },
   body: {
+    fontFamily: fonts.medium,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '500' as const,
   },
   label: {
+    fontFamily: fonts.medium,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '500' as const,

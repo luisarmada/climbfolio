@@ -3,7 +3,7 @@ import { runMigrations } from './migrations';
 import { DatabaseClient } from './types';
 import { getWebDatabase } from './webDatabase';
 
-const databaseName = 'climbfolio.db';
+const databaseName = 'climb_book.db';
 
 declare const require: <T>(moduleName: string) => T;
 

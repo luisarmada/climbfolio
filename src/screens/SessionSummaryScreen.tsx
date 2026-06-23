@@ -1,46 +1,137 @@
-import { useRouter } from 'expo-router';
-import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { StatCard } from '../components/StatCard';
 import { colors, spacing, typography } from '../design/tokens';
+import {
+  formatDuration,
+  formatOneDecimal,
+  formatOptionalDuration,
+  formatSessionDate,
+  SessionSummary,
+  sessionSummaryService,
+} from '../features/summaries';
 
-const summaryStats = [
-  { label: 'Duration', value: '0m' },
-  { label: 'Climbs', value: '0' },
-  { label: 'Attempts', value: '0' },
-  { label: 'Completed', value: '0 / 0' },
-];
+function getSummaryStats(summary: SessionSummary) {
+  return [
+    { accent: 'mint' as const, icon: 'clock' as const, label: 'Duration', value: formatDuration(summary.session.durationSeconds) },
+    { accent: 'amber' as const, icon: 'triangle' as const, label: 'Climbs', value: String(summary.totalClimbs) },
+    { accent: 'lavender' as const, icon: 'bar-chart-2' as const, label: 'Attempts', value: String(summary.totalAttempts) },
+    {
+      accent: 'coral' as const,
+      icon: 'check-circle' as const,
+      label: 'Completed',
+      value: `${summary.completedClimbs} / ${summary.totalClimbs}`,
+    },
+    {
+      accent: 'sky' as const,
+      icon: 'trending-up' as const,
+      label: 'Highest Sent',
+      value: summary.highestGradeCompleted ?? 'None',
+    },
+    {
+      accent: 'mint' as const,
+      icon: 'target' as const,
+      label: 'Avg Attempts',
+      value: formatOneDecimal(summary.averageAttemptsPerClimb),
+    },
+  ];
+}
 
 export function SessionSummaryScreen() {
   const router = useRouter();
   const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSummary() {
+      if (!sessionId) {
+        setIsLoading(false);
+        return;
+      }
+
+      const nextSummary = await sessionSummaryService.getSessionSummary(sessionId);
+
+      if (isMounted) {
+        setSummary(nextSummary);
+        setIsLoading(false);
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.title}>Session Summary</Text>
+        <Text style={styles.subtitle}>Loading saved session...</Text>
+      </View>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={styles.title}>Session Summary</Text>
+        <Text style={styles.subtitle}>No saved session was found for this summary.</Text>
+        <AppButton icon="home" onPress={() => router.push('/')} title="Back Home" variant="secondary" />
+      </ScrollView>
+    );
+  }
+
+  const stats = getSummaryStats(summary);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Session Summary</Text>
-      <Text style={styles.subtitle}>
-        {sessionId ? `Saved session ${sessionId}` : 'This placeholder will use saved session data after the summary milestone.'}
-      </Text>
+      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
 
       <View style={styles.grid}>
-        {summaryStats.map((stat) => (
-          <AppCard key={stat.label} style={styles.statCard}>
-            <Text style={styles.statValue}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </AppCard>
+        {stats.map((stat) => (
+          <StatCard
+            accent={stat.accent}
+            compact
+            icon={stat.icon}
+            key={stat.label}
+            label={stat.label}
+            style={styles.statCard}
+            value={stat.value}
+          />
         ))}
       </View>
 
       <AppCard style={styles.detailCard}>
-        <Text style={styles.detailTitle}>Session saved</Text>
-        <Text style={styles.detailCopy}>
-          Duration is now persisted when you end a session. Climb totals, rest, highest grade, and common hold types arrive in the next milestones.
-        </Text>
+        <Text style={styles.detailTitle}>Session notes</Text>
+        <View style={styles.detailRows}>
+          <Text style={styles.detailRow}>Completion rate: {summary.completionRate}%</Text>
+          <Text style={styles.detailRow}>Highest attempted: {summary.highestGradeAttempted ?? 'None'}</Text>
+          <Text style={styles.detailRow}>Most common colour: {summary.mostCommonColour ?? 'None'}</Text>
+          <Text style={styles.detailRow}>Most common type: {summary.mostCommonHoldType ?? 'None'}</Text>
+          <Text style={styles.detailRow}>
+            Average rest between attempts: {formatOptionalDuration(summary.averageRestBetweenAttemptsSeconds)}
+          </Text>
+          <Text style={styles.detailRow}>
+            Average rest between climbs: {formatOptionalDuration(summary.averageRestBetweenClimbsSeconds)}
+          </Text>
+        </View>
       </AppCard>
 
       <View style={styles.actions}>
-        <AppButton icon="file-text" onPress={() => router.push('/session/preview')} title="Open Session Detail" />
+        <AppButton
+          icon="file-text"
+          onPress={() => router.push(`/session/${summary.session.id}`)}
+          title="Open Session Detail"
+        />
         <AppButton icon="home" onPress={() => router.push('/')} title="Back Home" variant="secondary" />
       </View>
     </ScrollView>
@@ -48,15 +139,45 @@ export function SessionSummaryScreen() {
 }
 
 const styles = StyleSheet.create({
+  actions: {
+    gap: spacing.md,
+    marginTop: spacing.xl,
+  },
+  centerState: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xxl,
+  },
   content: {
     paddingBottom: spacing.xxxl,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
-  title: {
-    ...typography.title,
+  detailCard: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+  },
+  detailRow: {
     color: colors.charcoal,
-    fontSize: 39,
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  detailRows: {
+    gap: spacing.sm,
+  },
+  detailTitle: {
+    ...typography.h2,
+    color: colors.charcoal,
+    marginBottom: spacing.md,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  statCard: {
+    width: '48%',
   },
   subtitle: {
     color: colors.muted,
@@ -66,42 +187,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     marginTop: spacing.sm,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  statCard: {
-    padding: spacing.lg,
-    width: '48%',
-  },
-  statValue: {
+  title: {
+    ...typography.title,
     color: colors.charcoal,
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  statLabel: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-  },
-  detailCard: {
-    marginTop: spacing.xl,
-    padding: spacing.lg,
-  },
-  detailTitle: {
-    ...typography.h2,
-    color: colors.charcoal,
-    marginBottom: spacing.sm,
-  },
-  detailCopy: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  actions: {
-    gap: spacing.md,
-    marginTop: spacing.xl,
+    fontSize: 39,
   },
 });

@@ -1,5 +1,6 @@
 import { Session } from '../../domain/models';
 import { climbRepository, sessionRepository, statsRepository } from '../../data/repositories';
+import { nowIso } from '../../utils/dates';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
 
 async function getSessionTotals(sessionId: string): Promise<ActiveSessionTotals> {
@@ -50,5 +51,9 @@ export const sessionService = {
 
   async endSession(sessionId: string): Promise<Session | null> {
     return sessionRepository.end(sessionId);
+  },
+
+  async discardSession(sessionId: string): Promise<Session | null> {
+    return sessionRepository.update(sessionId, { deletedAt: nowIso() });
   },
 };

@@ -1,5 +1,5 @@
 {
-  "name": "climbfolio-rn-mockup",
+  "name": "climb-book-rn-mockup",
   "version": "0.1.0",
   "private": true,
   "main": "expo-router/entry",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo-google-fonts/manrope": "^0.4.2",
     "@expo/metro-runtime": "~4.0.1",
     "@expo/vector-icons": "~14.0.4",
     "expo": "~52.0.0",

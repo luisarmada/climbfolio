@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, radius, spacing } from '../design/tokens';
+import { colors, fonts, radius, spacing } from '../design/tokens';
 
 type Segment<T extends string> = {
   label: string;
@@ -22,6 +22,7 @@ export function SegmentedControl<T extends string>({ onChange, segments, value }
           <TouchableOpacity
             key={segment.value}
             activeOpacity={0.76}
+            accessibilityLabel={segment.label}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
             onPress={() => onChange(segment.value)}
@@ -62,11 +63,13 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.muted,
+    fontFamily: fonts.semiBold,
     fontSize: 14,
     fontWeight: '600',
   },
   activeLabel: {
     color: colors.charcoal,
+    fontFamily: fonts.extraBold,
     fontWeight: '800',
   },
 });
