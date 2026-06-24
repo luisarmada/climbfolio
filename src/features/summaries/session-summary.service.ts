@@ -1,6 +1,7 @@
 import { attemptRepository, climbRepository, sessionRepository } from '../../data/repositories';
 import { Attempt, Climb, Session } from '../../domain/models';
-import { climbGrades, warmUpHoldType } from '../climbs';
+import { vScaleGrades } from '../../domain/gradeScales';
+import { warmUpHoldType } from '../climbs';
 
 export type SessionSummary = {
   session: Session;
@@ -35,14 +36,14 @@ export type AggregateStats = {
   totalClimbs: number;
 };
 
-function gradeRank(grade: string) {
-  const index = climbGrades.indexOf(grade);
+function gradeRank(grade: string, gradeOptions = vScaleGrades) {
+  const index = gradeOptions.indexOf(grade);
   return index === -1 ? -1 : index;
 }
 
-function highestGrade(climbs: Climb[]) {
+function highestGrade(climbs: Climb[], gradeOptions = vScaleGrades) {
   return climbs.reduce<string | null>((highest, climb) => {
-    if (!highest || gradeRank(climb.grade) > gradeRank(highest)) {
+    if (!highest || gradeRank(climb.grade, gradeOptions) > gradeRank(highest, gradeOptions)) {
       return climb.grade;
     }
 
@@ -172,8 +173,8 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     averageRestBetweenClimbsSeconds: average(restBetweenClimbs),
     completedClimbs: completed.length,
     completionRate: climbs.length === 0 ? 0 : Math.round((completed.length / climbs.length) * 100),
-    highestGradeAttempted: highestGrade(climbs),
-    highestGradeCompleted: highestGrade(completed),
+    highestGradeAttempted: highestGrade(climbs, session.gradingScaleGrades),
+    highestGradeCompleted: highestGrade(completed, session.gradingScaleGrades),
     mostCommonColour: mostCommon(colours),
     mostCommonHoldType: mostCommon(holdTypes),
     totalAttempts,

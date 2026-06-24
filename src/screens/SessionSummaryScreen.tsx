@@ -5,6 +5,7 @@ import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { StatCard } from '../components/StatCard';
 import { colors, spacing, typography } from '../design/tokens';
+import { getSessionDisplayName } from '../features/sessions';
 import {
   formatDuration,
   formatOneDecimal,
@@ -90,10 +91,11 @@ export function SessionSummaryScreen() {
   }
 
   const stats = getSummaryStats(summary);
+  const sessionTitle = getSessionDisplayName(summary.session);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>Session Summary</Text>
+      <Text style={styles.title}>{sessionTitle}</Text>
       <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
 
       <View style={styles.grid}>
@@ -113,10 +115,11 @@ export function SessionSummaryScreen() {
       <AppCard style={styles.detailCard}>
         <Text style={styles.detailTitle}>Session notes</Text>
         <View style={styles.detailRows}>
+          {summary.session.description ? <Text style={styles.detailRow}>{summary.session.description}</Text> : null}
           <Text style={styles.detailRow}>Completion rate: {summary.completionRate}%</Text>
           <Text style={styles.detailRow}>Highest attempted: {summary.highestGradeAttempted ?? 'None'}</Text>
           <Text style={styles.detailRow}>Most common colour: {summary.mostCommonColour ?? 'None'}</Text>
-          <Text style={styles.detailRow}>Most common type: {summary.mostCommonHoldType ?? 'None'}</Text>
+          <Text style={styles.detailRow}>Most common hold type: {summary.mostCommonHoldType ?? 'None'}</Text>
           <Text style={styles.detailRow}>
             Average rest between attempts: {formatOptionalDuration(summary.averageRestBetweenAttemptsSeconds)}
           </Text>
@@ -149,7 +152,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
   },
   content: {
-    paddingBottom: spacing.xxxl,
+    paddingBottom: 132,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },

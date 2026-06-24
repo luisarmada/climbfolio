@@ -1,33 +1,60 @@
-import { useEffect, useState } from 'react';
+import { ComponentProps, useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { SectionHeader } from '../components/SectionHeader';
-import { StatCard } from '../components/StatCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { AggregateStats, formatDuration, formatMonthLabel, formatSessionDate, SessionSummary, sessionSummaryService } from '../features/summaries';
+import { ProfileBadgePreference } from '../domain/models';
+import { useProfileStore } from '../features/profile';
+import { getSessionDisplayName } from '../features/sessions';
+import {
+  calculateWeeklyStreak,
+  formatDuration,
+  formatSessionDate,
+  SessionSummary,
+  sessionSummaryService,
+  summarizeAggregate,
+} from '../features/summaries';
 
-const emptyStats: AggregateStats = {
-  averageAttemptsPerClimb: 0,
-  averageClimbsPerSession: 0,
-  averageSessionDurationSeconds: null,
-  completedClimbs: 0,
-  completionRate: 0,
-  highestGradeAttempted: null,
-  highestGradeCompleted: null,
-  mostClimbedGrade: null,
-  mostCommonColour: null,
-  mostCommonHoldType: null,
-  sessions: 0,
-  totalAttempts: 0,
-  totalClimbs: 0,
+type FeatherName = ComponentProps<typeof Feather>['name'];
+type DashboardAction = {
+  accent: string;
+  icon: FeatherName;
+  label: string;
 };
+
+const dashboardActions: DashboardAction[] = [
+  { accent: colors.mint, icon: 'bar-chart-2', label: 'Statistics' },
+  { accent: colors.amber, icon: 'grid', label: 'Collection' },
+  { accent: colors.sky, icon: 'activity', label: 'Measures' },
+  { accent: colors.lavender, icon: 'calendar', label: 'Calendar' },
+];
+
+function formatProfileBadge(preference: ProfileBadgePreference, summaries: SessionSummary[]) {
+  const aggregateStats = summarizeAggregate(summaries);
+  const weeklyStreak = calculateWeeklyStreak(summaries);
+
+  if (preference === 'sessions') {
+    return `${aggregateStats.sessions} Sessions`;
+  }
+
+  if (preference === 'weekly_streak') {
+    return `${weeklyStreak} Week Streak`;
+  }
+
+  if (preference === 'local_only') {
+    return 'Local Only';
+  }
+
+  return `Best Grade ${aggregateStats.highestGradeCompleted ?? 'None Yet'}`;
+}
 
 export function ProfileScreen() {
   const router = useRouter();
-  const [monthlyStats, setMonthlyStats] = useState<AggregateStats>(emptyStats);
+  const loadProfile = useProfileStore((state) => state.loadProfile);
+  const profile = useProfileStore((state) => state.profile);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,13 +62,12 @@ export function ProfileScreen() {
     let isMounted = true;
 
     async function loadSessions() {
-      const [nextSummaries, nextMonthlyStats] = await Promise.all([
+      const [nextSummaries] = await Promise.all([
         sessionSummaryService.listCompletedSessionSummaries(),
-        sessionSummaryService.getMonthlyAggregateStats(),
+        loadProfile(),
       ]);
 
       if (isMounted) {
-        setMonthlyStats(nextMonthlyStats);
         setSummaries(nextSummaries);
         setIsLoading(false);
       }
@@ -52,7 +78,13 @@ export function ProfileScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadProfile]);
+
+  const aggregateStats = summarizeAggregate(summaries);
+  const weeklyStreak = calculateWeeklyStreak(summaries);
+  const displayName = profile?.displayName ?? 'Local Climber';
+  const climberType = profile?.climberType ?? 'Indoor boulderer';
+  const badgeText = formatProfileBadge(profile?.badgePreference ?? 'best_grade', summaries);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -63,8 +95,9 @@ export function ProfileScreen() {
         </View>
         <TouchableOpacity
           activeOpacity={0.7}
-          accessibilityLabel="Profile settings placeholder"
+          accessibilityLabel="Open profile settings"
           accessibilityRole="button"
+          onPress={() => router.push('/settings')}
           style={styles.iconButton}
         >
           <Feather name="settings" size={23} color={colors.charcoal} />
@@ -72,6 +105,15 @@ export function ProfileScreen() {
       </View>
 
       <AppCard style={styles.profileCard}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          accessibilityLabel="Edit profile details"
+          accessibilityRole="button"
+          onPress={() => router.push('/settings/profile')}
+          style={styles.profileEditButton}
+        >
+          <Feather name="edit-2" size={21} color={colors.charcoal} />
+        </TouchableOpacity>
         <View style={styles.profileTopRow}>
           <View style={styles.avatar}>
             <View style={styles.avatarBody} />
@@ -80,53 +122,47 @@ export function ProfileScreen() {
             <View style={[styles.avatarHold, styles.avatarHoldTwo]} />
           </View>
           <View style={styles.profileCopy}>
-            <Text style={styles.profileName}>Local Climber</Text>
-            <Text style={styles.profileType}>Indoor boulderer</Text>
-            <Text style={styles.bestBadge}>Best Grade Placeholder</Text>
+            <Text style={styles.profileName}>{displayName}</Text>
+            <Text style={styles.profileType}>{climberType}</Text>
+            <Text style={styles.bestBadge}>{badgeText}</Text>
           </View>
         </View>
 
         <View style={styles.profileStats}>
           <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>24</Text>
-            <Text style={styles.profileStatLabel}>Climbing Sessions</Text>
+            <Text style={styles.profileStatValue}>{aggregateStats.sessions}</Text>
+            <Text style={styles.profileStatLabel}>Sessions</Text>
           </View>
           <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>128</Text>
-            <Text style={styles.profileStatLabel}>Followers</Text>
+            <Text style={styles.profileStatValue}>{aggregateStats.totalClimbs}</Text>
+            <Text style={styles.profileStatLabel}>Climbs</Text>
           </View>
           <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>86</Text>
-            <Text style={styles.profileStatLabel}>Following</Text>
+            <Text style={styles.profileStatValue}>{weeklyStreak}</Text>
+            <Text style={styles.profileStatLabel}>Week Streak</Text>
           </View>
         </View>
       </AppCard>
 
-      <View style={styles.monthHeader}>
-        <View style={styles.monthTitleRow}>
-          <Text style={styles.monthTitle}>This Month</Text>
-          <View style={styles.dateFilter}>
-            <Feather name="calendar" size={15} color={colors.muted} />
-            <Text style={styles.dateText}>{formatMonthLabel()}</Text>
-          </View>
-        </View>
-        <TouchableOpacity activeOpacity={0.7} accessibilityRole="button">
-          <Text style={styles.moreStatsText}>More stats</Text>
-        </TouchableOpacity>
+      <View style={styles.dashboardHeader}>
+        <Text style={styles.dashboardTitle}>Dashboard</Text>
       </View>
 
-      <View style={styles.monthGrid}>
-        <StatCard compact icon="triangle" accent="mint" value={isLoading ? '...' : String(monthlyStats.sessions)} label="Sessions" style={styles.monthStat} />
-        <StatCard compact icon="link" accent="amber" value={isLoading ? '...' : String(monthlyStats.totalClimbs)} label="Climbs" style={styles.monthStat} />
-        <StatCard compact icon="bar-chart-2" accent="lavender" value={isLoading ? '...' : String(monthlyStats.totalAttempts)} label="Attempts" style={styles.monthStat} />
-        <StatCard
-          compact
-          icon="star"
-          accent="coral"
-          value={isLoading ? '...' : monthlyStats.highestGradeCompleted ?? 'None'}
-          label="Best"
-          style={styles.monthStat}
-        />
+      <View style={styles.dashboardGrid}>
+        {dashboardActions.map((action) => (
+          <TouchableOpacity
+            activeOpacity={0.72}
+            accessibilityLabel={`${action.label} dashboard placeholder`}
+            accessibilityRole="button"
+            key={action.label}
+            style={styles.dashboardButton}
+          >
+            <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
+              <Feather name={action.icon} size={21} color={colors.charcoal} />
+            </View>
+            <Text style={styles.dashboardButtonText}>{action.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <SectionHeader title="Per Session" />
@@ -147,7 +183,6 @@ export function ProfileScreen() {
         <View style={styles.sessionList}>
           {summaries.map((summary) => (
             <ActivityHighlightCard
-              icon="clock"
               key={summary.session.id}
               onPress={() => router.push(`/session/${summary.session.id}`)}
               stats={[
@@ -155,8 +190,8 @@ export function ProfileScreen() {
                 { label: 'Climbs', value: String(summary.totalClimbs) },
                 { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
               ]}
-              subtitle={`${summary.completedClimbs}/${summary.totalClimbs} sent - ${summary.totalAttempts} attempts`}
-              title={formatSessionDate(summary.session.startTime)}
+              subtitle={`${formatSessionDate(summary.session.startTime)} - ${summary.completedClimbs}/${summary.totalClimbs} sent - ${summary.totalAttempts} attempts`}
+              title={getSessionDisplayName(summary.session)}
             />
           ))}
         </View>
@@ -228,16 +263,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
-  dateFilter: {
+  dashboardButton: {
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.xl,
+    borderWidth: 1,
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.md,
+    minHeight: 72,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    width: '48%',
   },
-  dateText: {
-    color: colors.muted,
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    fontWeight: '700',
+  dashboardButtonText: {
+    color: colors.charcoal,
+    flex: 1,
+    fontFamily: fonts.extraBold,
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 19,
+  },
+  dashboardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  dashboardHeader: {
+    marginBottom: spacing.md,
+    marginTop: spacing.xl,
+  },
+  dashboardIcon: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  dashboardTitle: {
+    ...typography.h2,
+    color: colors.charcoal,
   },
   emptyCopy: {
     color: colors.muted,
@@ -273,42 +338,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 38,
   },
-  monthGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  monthHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-    marginTop: spacing.xl,
-  },
-  monthStat: {
-    width: '48%',
-  },
-  monthTitle: {
-    ...typography.h2,
-    color: colors.charcoal,
-  },
-  monthTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexShrink: 1,
-    gap: spacing.sm,
-  },
-  moreStatsText: {
-    color: '#6E55B5',
-    fontFamily: fonts.extraBold,
-    fontSize: 13,
-    fontWeight: '900',
-  },
   profileCard: {
     padding: spacing.lg,
+    position: 'relative',
   },
   profileCopy: {
     flex: 1,
+    paddingRight: spacing.xl,
+  },
+  profileEditButton: {
+    alignItems: 'center',
+    height: 38,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing.md,
+    top: spacing.md,
+    width: 38,
+    zIndex: 1,
   },
   profileName: {
     color: colors.charcoal,

@@ -19,11 +19,11 @@ const items: NavItem[] = [
 ];
 
 function getActiveScreen(pathname: string): ScreenKey {
-  if (pathname.startsWith('/climb')) {
+  if (pathname.startsWith('/climb') || pathname.startsWith('/session')) {
     return 'climb';
   }
 
-  if (pathname.startsWith('/profile')) {
+  if (pathname.startsWith('/profile') || pathname.startsWith('/settings')) {
     return 'profile';
   }
 

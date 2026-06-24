@@ -3,7 +3,7 @@ import { SessionDetailScreen } from '../../src/screens/SessionDetailScreen';
 
 export default function SessionDetailRoute() {
   return (
-    <AppShell showBottomNav={false}>
+    <AppShell>
       <SessionDetailScreen />
     </AppShell>
   );

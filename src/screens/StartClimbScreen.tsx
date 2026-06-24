@@ -4,22 +4,11 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { AppChip } from '../components/AppChip';
+import { HoldIcon } from '../components/HoldIcon';
 import { colors, spacing, typography } from '../design/tokens';
+import { vScaleGrades } from '../domain/gradeScales';
+import { climbColours, holdTypes } from '../features/climbs';
 import { useActiveSessionStore } from '../features/sessions';
-
-const grades = ['VB', 'V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10+'];
-const holdTypes = ['Jug', 'Crimp', 'Sloper', 'Pinch', 'Pocket', 'Volume', 'Slab', 'Overhang', 'Dyno'];
-const climbColours = [
-  { label: 'Red', value: '#E85845' },
-  { label: 'Blue', value: '#4C8BD9' },
-  { label: 'Green', value: '#58AA81' },
-  { label: 'Yellow', value: '#FFD166' },
-  { label: 'Purple', value: '#8F6ED5' },
-  { label: 'Black', value: '#1E1E1E' },
-  { label: 'White', value: '#FFFFFF' },
-  { label: 'Pink', value: '#F59AC7' },
-  { label: 'Orange', value: '#FF9666' },
-];
 
 export function StartClimbScreen() {
   const router = useRouter();
@@ -31,16 +20,23 @@ export function StartClimbScreen() {
   const startClimb = useActiveSessionStore((state) => state.startClimb);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [selectedColour, setSelectedColour] = useState<string | null>(null);
-  const [selectedHolds, setSelectedHolds] = useState<string[]>([]);
+  const [selectedHoldType, setSelectedHoldType] = useState<string | null>(null);
+  const gradeOptions = activeSession?.gradingScaleGrades.length ? activeSession.gradingScaleGrades : vScaleGrades;
 
   useEffect(() => {
     void restoreActiveSession();
   }, [restoreActiveSession]);
 
-  function toggleHold(holdType: string) {
-    setSelectedHolds((current) =>
-      current.includes(holdType) ? current.filter((item) => item !== holdType) : [...current, holdType],
-    );
+  useEffect(() => {
+    const firstGrade = gradeOptions[0] ?? 'V0';
+
+    if (!selectedGrade || !gradeOptions.includes(selectedGrade)) {
+      setSelectedGrade(firstGrade);
+    }
+  }, [gradeOptions, selectedGrade]);
+
+  function selectHoldType(holdType: string) {
+    setSelectedHoldType((current) => (current === holdType ? null : holdType));
   }
 
   async function handleStartClimb() {
@@ -51,7 +47,7 @@ export function StartClimbScreen() {
     await startClimb({
       colour: selectedColour,
       grade: selectedGrade,
-      holdTypes: selectedHolds,
+      holdTypes: selectedHoldType ? [selectedHoldType] : [],
     });
     router.replace('/session/active');
   }
@@ -79,24 +75,23 @@ export function StartClimbScreen() {
 
       <AppCard style={styles.section}>
         <Text style={styles.sectionTitle}>Grade</Text>
+        <Text style={styles.sectionHint}>{activeSession?.gradingScaleName ?? 'V Scale'}</Text>
         <View style={styles.chipWrap}>
-          {grades.map((grade) => (
+          {gradeOptions.map((grade) => (
             <AppChip key={grade} label={grade} onPress={() => setSelectedGrade(grade)} selected={selectedGrade === grade} />
           ))}
         </View>
       </AppCard>
 
       <AppCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Hold Type</Text>
-        <Text style={styles.sectionHint}>Optional, multi-select</Text>
+        <Text style={styles.sectionTitle}>Main hold type</Text>
+        <Text style={styles.sectionHint}>Optional, choose one</Text>
         <View style={styles.chipWrap}>
           {holdTypes.map((holdType) => (
-            <AppChip
-              key={holdType}
-              label={holdType}
-              onPress={() => toggleHold(holdType)}
-              selected={selectedHolds.includes(holdType)}
-            />
+            <View key={holdType} style={styles.holdChipWrap}>
+              <HoldIcon colours={selectedColour} holdType={holdType} size={32} />
+              <AppChip label={holdType} onPress={() => selectHoldType(holdType)} selected={selectedHoldType === holdType} />
+            </View>
           ))}
         </View>
       </AppCard>
@@ -133,7 +128,7 @@ export function StartClimbScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingBottom: spacing.xxxl,
+    paddingBottom: 132,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
@@ -170,6 +165,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  holdChipWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   actions: {
     gap: spacing.md,

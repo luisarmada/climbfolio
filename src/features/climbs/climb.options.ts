@@ -1,6 +1,9 @@
-export const climbGrades = ['VB', 'V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10+'];
+import { fontScaleGrades, vScaleGrades } from '../../domain/gradeScales';
 
-export const holdTypes = ['Jug', 'Crimp', 'Sloper', 'Pinch', 'Pocket', 'Volume', 'Slab', 'Overhang', 'Dyno'];
+export const climbGrades = vScaleGrades;
+export { fontScaleGrades, vScaleGrades };
+
+export const holdTypes = ['Jug', 'Crimp', 'Sloper', 'Pinch', 'Pocket', 'Undercut', 'Jib'];
 
 export const climbColours = [
   { label: 'Red', value: '#E85845' },

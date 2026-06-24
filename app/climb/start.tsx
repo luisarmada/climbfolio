@@ -3,7 +3,7 @@ import { StartClimbScreen } from '../../src/screens/StartClimbScreen';
 
 export default function StartClimbRoute() {
   return (
-    <AppShell showBottomNav={false}>
+    <AppShell>
       <StartClimbScreen />
     </AppShell>
   );

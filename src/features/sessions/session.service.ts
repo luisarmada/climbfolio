@@ -1,7 +1,10 @@
-import { Session } from '../../domain/models';
+import { EndSessionInput, Session } from '../../domain/models';
 import { climbRepository, sessionRepository, statsRepository } from '../../data/repositories';
+import { resolveSelectedGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
+import { climbingPreferencesService } from '../preferences';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
+import { normalizeSessionMetadata } from './session.finalization';
 
 async function getSessionTotals(sessionId: string): Promise<ActiveSessionTotals> {
   const totals = await statsRepository.getSessionTotals(sessionId);
@@ -24,7 +27,19 @@ async function toActiveSessionState(session: Session): Promise<ActiveSessionStat
 export const sessionService = {
   async startSession(): Promise<ActiveSessionState> {
     const existingSession = await sessionRepository.getActive();
-    const session = existingSession ?? (await sessionRepository.create());
+    const preferences = existingSession ? null : await climbingPreferencesService.getLocalPreferences();
+    const gradingScale = preferences ? resolveSelectedGradingScale(preferences) : null;
+    const session =
+      existingSession ??
+      (await sessionRepository.create(
+        gradingScale
+          ? {
+              gradingScaleGrades: gradingScale.gradingScaleGrades,
+              gradingScaleName: gradingScale.gradingScaleName,
+              gradingScaleType: gradingScale.gradingScaleType,
+            }
+          : undefined,
+      ));
 
     return toActiveSessionState(session);
   },
@@ -49,8 +64,11 @@ export const sessionService = {
     return toActiveSessionState(session);
   },
 
-  async endSession(sessionId: string): Promise<Session | null> {
-    return sessionRepository.end(sessionId);
+  async endSession(sessionId: string, input: EndSessionInput = {}): Promise<Session | null> {
+    const endTime = input.endTime ?? nowIso();
+    const metadata = normalizeSessionMetadata(input, new Date(endTime));
+
+    return sessionRepository.end(sessionId, { ...metadata, endTime });
   },
 
   async discardSession(sessionId: string): Promise<Session | null> {
