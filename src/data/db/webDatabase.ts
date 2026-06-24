@@ -8,6 +8,11 @@ type SessionRow = {
   end_time: string | null;
   duration_seconds: number | null;
   grading_scale_grades_json?: string;
+  grading_scale_is_tape?: number;
+  grading_scale_v_ranges_json?: string;
+  location_id?: string | null;
+  location_name?: string | null;
+  location_type?: string | null;
   grading_scale_name?: string;
   grading_scale_type?: string;
   created_at: string;
@@ -68,10 +73,22 @@ type ClimbingPreferencesRow = {
   deleted_at: string | null;
 };
 
+type LocationRow = {
+  created_at: string;
+  deleted_at: string | null;
+  grading_scale_id: string;
+  id: string;
+  is_selected: number;
+  name: string;
+  type: string;
+  updated_at: string;
+};
+
 type WebDatabaseState = {
   attempts: AttemptRow[];
   climbs: ClimbRow[];
   climbingPreferences: ClimbingPreferencesRow[];
+  locations: LocationRow[];
   migrations: { applied_at: string; version: number }[];
   profiles: UserProfileRow[];
   sessions: SessionRow[];
@@ -85,6 +102,7 @@ function createEmptyState(): WebDatabaseState {
     attempts: [],
     climbs: [],
     climbingPreferences: [],
+    locations: [],
     migrations: [],
     profiles: [],
     sessions: [],
@@ -125,13 +143,19 @@ function readState(): WebDatabaseState {
         selected_grading_scale_id: preferences.selected_grading_scale_id ?? preferences.grading_scale_type ?? 'v_scale',
       })),
       profiles: state.profiles ?? [],
+      locations: state.locations ?? [],
       sessions: (state.sessions ?? []).map((session) => ({
         ...session,
         description: session.description ?? null,
         grading_scale_grades_json:
           session.grading_scale_grades_json ?? '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_is_tape: session.grading_scale_is_tape ?? 0,
+        grading_scale_v_ranges_json: session.grading_scale_v_ranges_json ?? '{}',
         grading_scale_name: session.grading_scale_name ?? 'V Scale',
         grading_scale_type: session.grading_scale_type ?? 'v_scale',
+        location_id: session.location_id ?? null,
+        location_name: session.location_name ?? null,
+        location_type: session.location_type ?? null,
         name: session.name ?? null,
       })),
     };
@@ -174,6 +198,49 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into sessions')) {
+      if (params.length === 17) {
+        const [
+          id,
+          name,
+          description,
+          startTime,
+          endTime,
+          durationSeconds,
+          gradingScaleType,
+          gradingScaleName,
+          gradingScaleGradesJson,
+          gradingScaleIsTape,
+          gradingScaleRangesJson,
+          locationId,
+          locationName,
+          locationType,
+          createdAt,
+          updatedAt,
+          deletedAt,
+        ] = params;
+        this.state.sessions.push({
+          id: String(id),
+          name: name == null ? null : String(name),
+          description: description == null ? null : String(description),
+          start_time: String(startTime),
+          end_time: endTime == null ? null : String(endTime),
+          duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
+          grading_scale_grades_json: String(gradingScaleGradesJson),
+          grading_scale_is_tape: Number(gradingScaleIsTape),
+          grading_scale_v_ranges_json: String(gradingScaleRangesJson),
+          grading_scale_name: String(gradingScaleName),
+          grading_scale_type: String(gradingScaleType),
+          location_id: locationId == null ? null : String(locationId),
+          location_name: locationName == null ? null : String(locationName),
+          location_type: locationType == null ? null : String(locationType),
+          created_at: String(createdAt),
+          updated_at: String(updatedAt),
+          deleted_at: deletedAt == null ? null : String(deletedAt),
+        });
+        writeState(this.state);
+        return;
+      }
+
       const [
         id,
         maybeNameOrStartTime,
@@ -184,12 +251,16 @@ class WebDatabase implements DatabaseClient {
         maybeGradingScaleTypeOrGradesJson,
         maybeGradingScaleNameOrCreatedAt,
         maybeGradingScaleGradesJsonOrUpdatedAt,
-        maybeCreatedAtOrDeletedAt,
-        maybeUpdatedAt,
+        maybeGradingScaleIsTapeOrRangesJson,
+        maybeGradingScaleRangesJsonOrCreatedAt,
+        maybeCreatedAtOrUpdatedAt,
+        maybeUpdatedAtOrDeletedAt,
         maybeDeletedAt,
       ] = params;
-      const hasMetadata = params.length === 12;
-      const hasGradingScale = params.length === 12 || params.length === 10;
+      const hasMetadata = params.length === 14 || params.length === 13 || params.length === 12;
+      const hasTapeFlag = params.length === 14;
+      const hasVGradeRanges = params.length === 14 || params.length === 13;
+      const hasGradingScale = params.length === 14 || params.length === 13 || params.length === 12 || params.length === 10;
       const name = hasMetadata ? maybeNameOrStartTime : null;
       const description = hasMetadata ? maybeDescriptionOrEndTime : null;
       const startTime = hasMetadata ? maybeStartTimeOrDurationSeconds : maybeNameOrStartTime;
@@ -198,20 +269,34 @@ class WebDatabase implements DatabaseClient {
       const gradingScaleType = hasMetadata ? maybeGradingScaleTypeOrGradesJson : maybeEndTimeOrGradingScaleType;
       const gradingScaleName = hasMetadata ? maybeGradingScaleNameOrCreatedAt : maybeDurationSecondsOrGradingScaleName;
       const gradingScaleGradesJson = hasMetadata ? maybeGradingScaleGradesJsonOrUpdatedAt : maybeGradingScaleTypeOrGradesJson;
+      const gradingScaleIsTape = hasTapeFlag ? maybeGradingScaleIsTapeOrRangesJson : 0;
+      const gradingScaleRangesJson = hasTapeFlag ? maybeGradingScaleRangesJsonOrCreatedAt : hasVGradeRanges ? maybeGradingScaleIsTapeOrRangesJson : '{}';
       const createdAt = hasMetadata
-        ? maybeCreatedAtOrDeletedAt
+        ? hasVGradeRanges
+          ? hasTapeFlag
+            ? maybeCreatedAtOrUpdatedAt
+            : maybeGradingScaleRangesJsonOrCreatedAt
+          : maybeGradingScaleRangesJsonOrCreatedAt
         : hasGradingScale
           ? maybeGradingScaleNameOrCreatedAt
           : maybeEndTimeOrGradingScaleType;
       const updatedAt = hasMetadata
-        ? maybeUpdatedAt
+        ? hasVGradeRanges
+          ? hasTapeFlag
+            ? maybeUpdatedAtOrDeletedAt
+            : maybeCreatedAtOrUpdatedAt
+          : maybeCreatedAtOrUpdatedAt
         : hasGradingScale
           ? maybeGradingScaleGradesJsonOrUpdatedAt
           : maybeDurationSecondsOrGradingScaleName;
       const deletedAt = hasMetadata
-        ? maybeDeletedAt
+        ? hasVGradeRanges
+          ? hasTapeFlag
+            ? maybeDeletedAt
+            : maybeUpdatedAtOrDeletedAt
+          : maybeUpdatedAtOrDeletedAt
         : hasGradingScale
-          ? maybeCreatedAtOrDeletedAt
+          ? maybeGradingScaleRangesJsonOrCreatedAt
           : maybeGradingScaleTypeOrGradesJson;
       this.state.sessions.push({
         id: String(id),
@@ -223,6 +308,8 @@ class WebDatabase implements DatabaseClient {
         grading_scale_grades_json: hasGradingScale
           ? String(gradingScaleGradesJson)
           : '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_v_ranges_json: String(gradingScaleRangesJson),
+        grading_scale_is_tape: Number(gradingScaleIsTape),
         grading_scale_name: hasGradingScale ? String(gradingScaleName) : 'V Scale',
         grading_scale_type: hasGradingScale ? String(gradingScaleType) : 'v_scale',
         created_at: String(createdAt),
@@ -281,6 +368,22 @@ class WebDatabase implements DatabaseClient {
       return;
     }
 
+    if (normalizedSql.startsWith('insert into climbing_locations')) {
+      const [id, name, type, gradingScaleId, isSelected, createdAt, updatedAt, deletedAt] = params;
+      this.state.locations.push({
+        id: String(id),
+        name: String(name),
+        type: String(type),
+        grading_scale_id: String(gradingScaleId),
+        is_selected: Number(isSelected),
+        created_at: String(createdAt),
+        updated_at: String(updatedAt),
+        deleted_at: deletedAt == null ? null : String(deletedAt),
+      });
+      writeState(this.state);
+      return;
+    }
+
     if (normalizedSql.startsWith('update climbing_preferences')) {
       const [
         defaultClimbGrade,
@@ -309,6 +412,44 @@ class WebDatabase implements DatabaseClient {
               updated_at: String(updatedAt),
             }
           : preferences,
+      );
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('update climbing_locations set is_selected = 0')) {
+      this.state.locations = this.state.locations.map((location) =>
+        location.deleted_at === null ? { ...location, is_selected: 0 } : location,
+      );
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('update climbing_locations set is_selected = 1')) {
+      const [updatedAt, id] = params;
+      this.state.locations = this.state.locations.map((location) =>
+        location.id === id && location.deleted_at === null
+          ? { ...location, is_selected: 1, updated_at: String(updatedAt) }
+          : location,
+      );
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('update climbing_locations')) {
+      const [name, type, gradingScaleId, isSelected, deletedAt, updatedAt, id] = params;
+      this.state.locations = this.state.locations.map((location) =>
+        location.id === id
+          ? {
+              ...location,
+              name: String(name),
+              type: String(type),
+              grading_scale_id: String(gradingScaleId),
+              is_selected: Number(isSelected),
+              deleted_at: deletedAt == null ? null : String(deletedAt),
+              updated_at: String(updatedAt),
+            }
+          : location,
       );
       writeState(this.state);
       return;
@@ -524,6 +665,25 @@ class WebDatabase implements DatabaseClient {
       }
 
       return rows as T[];
+    }
+
+    if (normalizedSql.includes('from climbing_locations')) {
+      const [firstParam] = params;
+      let rows = this.state.locations;
+
+      if (normalizedSql.includes('where id = ?')) {
+        rows = rows.filter((location) => location.id === firstParam && location.deleted_at === null);
+      } else if (normalizedSql.includes('is_selected = 1')) {
+        rows = rows.filter((location) => location.is_selected === 1 && location.deleted_at === null);
+        return sortByDesc(rows, (location) => location.updated_at) as T[];
+      } else if (normalizedSql.includes('deleted_at is null')) {
+        rows = rows.filter((location) => location.deleted_at === null);
+      }
+
+      return [...rows].sort((left, right) => {
+        const selectedDelta = right.is_selected - left.is_selected;
+        return selectedDelta === 0 ? left.name.localeCompare(right.name) : selectedDelta;
+      }) as T[];
     }
 
     if (normalizedSql.includes('from climbs') && normalizedSql.includes('coalesce(sum')) {

@@ -21,7 +21,7 @@ const settingsSections: SettingsSection[] = [
     title: 'Account',
     rows: [
       {
-        detail: 'Display name, climber type, and profile badge',
+        detail: 'Display name and climber type',
         href: '/settings/profile',
         label: 'Profile',
         status: 'Ready',
@@ -34,9 +34,15 @@ const settingsSections: SettingsSection[] = [
     title: 'Preferences',
     rows: [
       {
-        detail: 'Grading scale and custom grade order',
+        detail: 'Built-in, custom, and tape grading systems',
         href: '/settings/climbing',
-        label: 'Climbing preferences',
+        label: 'Grade scales',
+        status: 'Ready',
+      },
+      {
+        detail: 'Places, location type, and grade scale mapping',
+        href: '/settings/locations',
+        label: 'Locations',
         status: 'Ready',
       },
       { detail: 'Profile visibility, followers, and sharing controls', label: 'Privacy and social' },

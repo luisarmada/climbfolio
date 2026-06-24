@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
+import { AppCard } from '../components/AppCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatCard } from '../components/StatCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
@@ -22,27 +22,6 @@ const emptyStats: AggregateStats = {
   totalAttempts: 0,
   totalClimbs: 0,
 };
-
-const friendHighlights = [
-  {
-    subtitle: 'Lena logged a strong board session',
-    title: 'New high point',
-    stats: [
-      { label: 'Sent', value: 'V4' },
-      { label: 'Climbs', value: '9' },
-      { label: 'Attempts', value: '18' },
-    ],
-  },
-  {
-    subtitle: 'Sam wrapped a short lunch climb',
-    title: 'Quick session',
-    stats: [
-      { label: 'Time', value: '32m' },
-      { label: 'Sent', value: '6' },
-      { label: 'Best', value: 'V3' },
-    ],
-  },
-];
 
 export function HomeScreen() {
   const [lifetimeStats, setLifetimeStats] = useState<AggregateStats>(emptyStats);
@@ -120,17 +99,15 @@ export function HomeScreen() {
       </View>
 
       <SectionHeader title="Friend Activity" />
-      <View style={styles.highlightList}>
-        {friendHighlights.map((highlight) => (
-          <ActivityHighlightCard
-            icon="users"
-            key={highlight.title}
-            stats={highlight.stats}
-            subtitle={highlight.subtitle}
-            title={highlight.title}
-          />
-        ))}
-      </View>
+      <AppCard style={styles.comingSoonCard}>
+        <View style={styles.comingSoonIcon}>
+          <Feather name="users" size={20} color={colors.charcoal} />
+        </View>
+        <Text style={styles.comingSoonTitle}>Coming soon</Text>
+        <Text style={styles.comingSoonCopy}>
+          Friend activity is taking a rest for now. Your home feed will stay focused on your local climbing progress.
+        </Text>
+      </AppCard>
     </ScrollView>
   );
 }
@@ -154,8 +131,34 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  highlightList: {
-    gap: spacing.md,
+  comingSoonCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  comingSoonCopy: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    marginTop: spacing.sm,
+    maxWidth: 300,
+    textAlign: 'center',
+  },
+  comingSoonIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.sky,
+    borderRadius: radius.pill,
+    height: 44,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    width: 44,
+  },
+  comingSoonTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 18,
+    fontWeight: '900',
   },
   stat: {
     width: '47.8%',

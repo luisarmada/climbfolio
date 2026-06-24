@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { normalizeFeature } from '../features/climbs';
 import { getSessionDisplayName } from '../features/sessions';
 import {
   formatDuration,
@@ -15,7 +16,11 @@ import {
 } from '../features/summaries';
 
 function formatColourDisplay(colour: string | null) {
-  return colour?.split(',').map((item) => item.trim()).filter(Boolean).join(' & ') || 'No colour';
+  return colour?.split(',').map((item) => item.trim()).filter(Boolean).join(' & ') || 'No hold colour';
+}
+
+function formatFeatureDisplay(features: string[]) {
+  return features.length > 0 ? features.map(normalizeFeature).join(', ') : 'No feature selected';
 }
 
 export function SessionDetailScreen() {
@@ -77,6 +82,7 @@ export function SessionDetailScreen() {
       <AppCard style={styles.summaryCard}>
         <Text style={styles.cardTitle}>Saved Session</Text>
         {summary.session.description ? <Text style={styles.sessionDescription}>{summary.session.description}</Text> : null}
+        <Text style={styles.sessionDescription}>Location: {summary.session.locationName ?? 'Not set'}</Text>
         <View style={styles.summaryGrid}>
           <View>
             <Text style={styles.summaryValue}>{formatDuration(summary.session.durationSeconds)}</Text>
@@ -126,7 +132,7 @@ export function SessionDetailScreen() {
                 {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'} - {formatDuration(climb.durationSeconds)}
               </Text>
               <Text style={styles.climbDetail}>
-                {climb.holdTypes.length > 0 ? climb.holdTypes.join(', ') : 'No hold type selected'}
+                {formatFeatureDisplay(climb.holdTypes)}
               </Text>
             </AppCard>
           ))}

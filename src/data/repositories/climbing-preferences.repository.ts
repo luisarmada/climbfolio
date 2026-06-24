@@ -59,7 +59,16 @@ function parseCustomScales(value: string | null | undefined) {
 
     return normalizeCustomScales(
       parsed
-        .filter((item): item is CustomGradingScale => {
+        .filter(
+          (
+            item,
+          ): item is {
+            grades: string[];
+            id: string;
+            isTape?: boolean;
+            name: string;
+            vGradeRanges?: CustomGradingScale['vGradeRanges'];
+          } => {
           return (
             item != null &&
             typeof item === 'object' &&
@@ -67,8 +76,15 @@ function parseCustomScales(value: string | null | undefined) {
             typeof item.name === 'string' &&
             Array.isArray(item.grades)
           );
-        })
-        .map((item) => ({ grades: item.grades, id: item.id, name: item.name })),
+        },
+        )
+        .map((item) => ({
+          grades: item.grades,
+          id: item.id,
+          isTape: Boolean(item.isTape),
+          name: item.name,
+          vGradeRanges: item.vGradeRanges ?? {},
+        })),
     );
   } catch {
     return [];
@@ -85,7 +101,9 @@ function getLegacyCustomScale(row: ClimbingPreferencesRow) {
   return {
     grades,
     id: 'custom_legacy',
+    isTape: false,
     name: row.custom_grading_scale_name || 'Custom scale',
+    vGradeRanges: {},
   };
 }
 

@@ -1,4 +1,4 @@
-import { GradingScaleType } from '../gradeScales';
+import { GradingScaleType, VGradeRange } from '../gradeScales';
 
 export type Session = {
   id: string;
@@ -8,8 +8,13 @@ export type Session = {
   endTime: string | null;
   durationSeconds: number | null;
   gradingScaleGrades: string[];
+  gradingScaleIsTape?: boolean;
   gradingScaleName: string;
   gradingScaleType: GradingScaleType;
+  gradingScaleVGradeRanges: Record<string, VGradeRange>;
+  locationId: string | null;
+  locationName: string | null;
+  locationType: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -19,9 +24,14 @@ export type CreateSessionInput = {
   name?: string | null;
   description?: string | null;
   gradingScaleGrades?: string[];
+  gradingScaleIsTape?: boolean;
   gradingScaleName?: string;
   gradingScaleType?: GradingScaleType;
+  gradingScaleVGradeRanges?: Record<string, VGradeRange>;
   id?: string;
+  locationId?: string | null;
+  locationName?: string | null;
+  locationType?: string | null;
   startTime?: string;
 };
 

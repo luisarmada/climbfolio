@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
-import { AppChip } from '../components/AppChip';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { ProfileBadgePreference } from '../domain/models';
-import { getProfileBadgeOption, profileBadgeOptions, useProfileStore } from '../features/profile';
+import { useProfileStore } from '../features/profile';
 
 export function ProfileSettingsScreen() {
   const router = useRouter();
@@ -18,7 +16,6 @@ export function ProfileSettingsScreen() {
   const error = useProfileStore((state) => state.error);
   const [displayName, setDisplayName] = useState('Local Climber');
   const [climberType, setClimberType] = useState('Indoor boulderer');
-  const [badgePreference, setBadgePreference] = useState<ProfileBadgePreference>('best_grade');
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,7 +27,6 @@ export function ProfileSettingsScreen() {
       if (isMounted) {
         setDisplayName(nextProfile.displayName);
         setClimberType(nextProfile.climberType);
-        setBadgePreference(nextProfile.badgePreference);
       }
     }
 
@@ -48,15 +44,13 @@ export function ProfileSettingsScreen() {
 
     setDisplayName(profile.displayName);
     setClimberType(profile.climberType);
-    setBadgePreference(profile.badgePreference);
   }, [profile]);
 
   async function handleSave() {
-    await updateProfile({ badgePreference, climberType, displayName });
+    await updateProfile({ badgePreference: 'best_grade', climberType, displayName });
     setSavedMessage('Saved locally');
   }
 
-  const selectedBadge = getProfileBadgeOption(badgePreference);
   const canSave = displayName.trim().length > 0 && climberType.trim().length > 0 && !isLoading;
 
   return (
@@ -84,7 +78,7 @@ export function ProfileSettingsScreen() {
         <View style={styles.previewCopy}>
           <Text style={styles.previewName}>{displayName.trim() || 'Local Climber'}</Text>
           <Text style={styles.previewType}>{climberType.trim() || 'Indoor boulderer'}</Text>
-          <Text style={styles.previewBadge}>{selectedBadge.label}</Text>
+          <Text style={styles.previewBadge}>Best grade badge</Text>
         </View>
       </AppCard>
 
@@ -117,36 +111,12 @@ export function ProfileSettingsScreen() {
         </AppCard>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Badge preference</Text>
-        <AppCard style={styles.badgeCard}>
-          <Text style={styles.helperText}>Choose the badge shown on your Profile card.</Text>
-          <View style={styles.chipWrap}>
-            {profileBadgeOptions.map((option) => (
-              <AppChip
-                key={option.value}
-                label={option.label}
-                onPress={() => {
-                  setBadgePreference(option.value);
-                  setSavedMessage(null);
-                }}
-                selected={option.value === badgePreference}
-              />
-            ))}
-          </View>
-          <View style={styles.badgeDescription}>
-            <View style={styles.badgeDescriptionIcon}>
-              <Feather name="award" size={18} color={colors.charcoal} />
-            </View>
-            <Text style={styles.badgeDescriptionText}>{selectedBadge.description}</Text>
-          </View>
-        </AppCard>
-      </View>
-
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {savedMessage ? <Text style={styles.savedText}>{savedMessage}</Text> : null}
 
-      <AppButton disabled={!canSave} icon="check" onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Profile'} />
+      <View style={styles.saveAction}>
+        <AppButton disabled={!canSave} icon="check" onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Profile'} />
+      </View>
     </ScrollView>
   );
 }
@@ -301,6 +271,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginVertical: spacing.md,
+  },
+  saveAction: {
+    marginTop: spacing.xl,
   },
   section: {
     marginTop: spacing.xxl,

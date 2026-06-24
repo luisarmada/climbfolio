@@ -25,16 +25,10 @@ const defaultProfile = {
   displayName: 'Local Climber',
 };
 
-const badgePreferences: ProfileBadgePreference[] = ['best_grade', 'sessions', 'weekly_streak', 'local_only'];
-
-function isBadgePreference(value: string): value is ProfileBadgePreference {
-  return badgePreferences.includes(value as ProfileBadgePreference);
-}
-
 function mapProfile(row: UserProfileRow): UserProfile {
   return {
     id: row.id,
-    badgePreference: isBadgePreference(row.badge_preference) ? row.badge_preference : defaultProfile.badgePreference,
+    badgePreference: defaultProfile.badgePreference,
     climberType: row.climber_type,
     createdAt: row.created_at,
     deletedAt: row.deleted_at,
@@ -93,7 +87,7 @@ export const profileRepository: ProfileRepository = {
     const updatedAt = nowIso();
     const next: UserProfile = {
       ...current,
-      badgePreference: input.badgePreference ?? current.badgePreference,
+      badgePreference: defaultProfile.badgePreference,
       climberType: input.climberType?.trim() || current.climberType,
       displayName: input.displayName?.trim() || current.displayName,
       updatedAt,

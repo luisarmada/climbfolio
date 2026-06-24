@@ -98,6 +98,37 @@ export async function runMigrations(database: DatabaseClient) {
       await database.execAsync('ALTER TABLE sessions ADD COLUMN description TEXT;');
     }
 
+    if (currentVersion > 0 && currentVersion < 8) {
+      await database.execAsync(`
+        ALTER TABLE sessions ADD COLUMN grading_scale_v_ranges_json TEXT NOT NULL DEFAULT '{}';
+      `);
+    }
+
+    if (currentVersion > 0 && currentVersion < 9) {
+      await database.execAsync(`
+        ALTER TABLE sessions ADD COLUMN grading_scale_is_tape INTEGER NOT NULL DEFAULT 0;
+      `);
+    }
+
+    if (currentVersion > 0 && currentVersion < 10) {
+      await database.execAsync('ALTER TABLE sessions ADD COLUMN location_id TEXT;');
+      await database.execAsync('ALTER TABLE sessions ADD COLUMN location_name TEXT;');
+      await database.execAsync('ALTER TABLE sessions ADD COLUMN location_type TEXT;');
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS climbing_locations (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          grading_scale_id TEXT NOT NULL,
+          is_selected INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT
+        );
+      `);
+      await database.execAsync('CREATE INDEX IF NOT EXISTS idx_locations_selected ON climbing_locations(is_selected, deleted_at);');
+    }
+
     await database.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?);',
       [schemaVersion, nowIso()],

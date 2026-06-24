@@ -1,7 +1,7 @@
 import { attemptRepository, climbRepository, sessionRepository } from '../../data/repositories';
 import { Attempt, Climb, Session } from '../../domain/models';
-import { vScaleGrades } from '../../domain/gradeScales';
-import { warmUpHoldType } from '../climbs';
+import { getGradeVRank, vScaleVGradeRanges } from '../../domain/gradeScales';
+import { normalizeFeature, warmUpHoldType } from '../climbs';
 
 export type SessionSummary = {
   session: Session;
@@ -36,14 +36,9 @@ export type AggregateStats = {
   totalClimbs: number;
 };
 
-function gradeRank(grade: string, gradeOptions = vScaleGrades) {
-  const index = gradeOptions.indexOf(grade);
-  return index === -1 ? -1 : index;
-}
-
-function highestGrade(climbs: Climb[], gradeOptions = vScaleGrades) {
+function highestGrade(climbs: Climb[], scale = { gradingScaleVGradeRanges: vScaleVGradeRanges }) {
   return climbs.reduce<string | null>((highest, climb) => {
-    if (!highest || gradeRank(climb.grade, gradeOptions) > gradeRank(highest, gradeOptions)) {
+    if (!highest || getGradeVRank(climb.grade, scale) > getGradeVRank(highest, scale)) {
       return climb.grade;
     }
 
@@ -92,7 +87,9 @@ export function summarizeAggregate(summaries: SessionSummary[]): AggregateStats 
     .map((summary) => summary.session.durationSeconds)
     .filter((seconds): seconds is number => seconds != null);
   const colours = climbs.flatMap((climb) => splitColours(climb.colour));
-  const holdTypes = climbs.flatMap((climb) => climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType));
+  const holdTypes = climbs.flatMap((climb) =>
+    climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType).map(normalizeFeature),
+  );
 
   return {
     averageAttemptsPerClimb: climbs.length === 0 ? 0 : totalAttempts / climbs.length,
@@ -161,7 +158,9 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     .map((climb) => climb.restBeforeClimbSeconds)
     .filter((seconds): seconds is number => seconds != null);
   const colours = climbs.flatMap((climb) => splitColours(climb.colour));
-  const holdTypes = climbs.flatMap((climb) => climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType));
+  const holdTypes = climbs.flatMap((climb) =>
+    climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType).map(normalizeFeature),
+  );
   const totalAttempts = climbs.reduce((total, climb) => total + climb.attemptCount, 0);
 
   return {
@@ -173,8 +172,8 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     averageRestBetweenClimbsSeconds: average(restBetweenClimbs),
     completedClimbs: completed.length,
     completionRate: climbs.length === 0 ? 0 : Math.round((completed.length / climbs.length) * 100),
-    highestGradeAttempted: highestGrade(climbs, session.gradingScaleGrades),
-    highestGradeCompleted: highestGrade(completed, session.gradingScaleGrades),
+    highestGradeAttempted: highestGrade(climbs, session),
+    highestGradeCompleted: highestGrade(completed, session),
     mostCommonColour: mostCommon(colours),
     mostCommonHoldType: mostCommon(holdTypes),
     totalAttempts,

@@ -1,12 +1,13 @@
 import { ComponentProps, useEffect, useState } from 'react';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { ProfileBadgePreference } from '../domain/models';
+import { formatVGradeRange, getDisplayGradeForVRank, getGradeVRange, getVGradeIndex, resolveSelectedGradingScale } from '../domain/gradeScales';
+import { useClimbingPreferencesStore } from '../features/preferences';
 import { useProfileStore } from '../features/profile';
 import { getSessionDisplayName } from '../features/sessions';
 import {
@@ -32,27 +33,48 @@ const dashboardActions: DashboardAction[] = [
   { accent: colors.lavender, icon: 'calendar', label: 'Calendar' },
 ];
 
-function formatProfileBadge(preference: ProfileBadgePreference, summaries: SessionSummary[]) {
-  const aggregateStats = summarizeAggregate(summaries);
-  const weeklyStreak = calculateWeeklyStreak(summaries);
+function formatProfileBadge(summaries: SessionSummary[], selectedScale: ReturnType<typeof resolveSelectedGradingScale>) {
+  const bestGrade = summaries
+    .flatMap((summary) =>
+      summary.climbs
+        .filter((climb) => climb.completed)
+        .map((climb) => {
+          const range = getGradeVRange(climb.grade, summary.session);
+          return {
+            maxRank: getVGradeIndex(range.max),
+            minRank: getVGradeIndex(range.min),
+            range,
+          };
+        }),
+    )
+    .sort((left, right) => right.maxRank - left.maxRank || right.minRank - left.minRank)[0];
 
-  if (preference === 'sessions') {
-    return `${aggregateStats.sessions} Sessions`;
+  if (!bestGrade) {
+    return 'New climber';
   }
 
-  if (preference === 'weekly_streak') {
-    return `${weeklyStreak} Week Streak`;
+  const gradeLabel =
+    selectedScale.gradingScaleType === 'font'
+      ? getDisplayGradeForVRank(bestGrade.maxRank, selectedScale)
+      : formatVGradeRange(bestGrade.range);
+
+  return `${gradeLabel} climber`;
+}
+
+function formatSessionHistorySubtitle(summary: SessionSummary) {
+  const date = formatSessionDate(summary.session.startTime);
+
+  if (summary.session.locationName) {
+    return `${date} @ ${summary.session.locationName}`;
   }
 
-  if (preference === 'local_only') {
-    return 'Local Only';
-  }
-
-  return `Best Grade ${aggregateStats.highestGradeCompleted ?? 'None Yet'}`;
+  return date;
 }
 
 export function ProfileScreen() {
   const router = useRouter();
+  const climbingPreferences = useClimbingPreferencesStore((state) => state.preferences);
+  const loadClimbingPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const loadProfile = useProfileStore((state) => state.loadProfile);
   const profile = useProfileStore((state) => state.profile);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
@@ -65,6 +87,7 @@ export function ProfileScreen() {
       const [nextSummaries] = await Promise.all([
         sessionSummaryService.listCompletedSessionSummaries(),
         loadProfile(),
+        loadClimbingPreferences(),
       ]);
 
       if (isMounted) {
@@ -78,13 +101,14 @@ export function ProfileScreen() {
     return () => {
       isMounted = false;
     };
-  }, [loadProfile]);
+  }, [loadClimbingPreferences, loadProfile]);
 
   const aggregateStats = summarizeAggregate(summaries);
   const weeklyStreak = calculateWeeklyStreak(summaries);
+  const selectedScale = resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' });
   const displayName = profile?.displayName ?? 'Local Climber';
   const climberType = profile?.climberType ?? 'Indoor boulderer';
-  const badgeText = formatProfileBadge(profile?.badgePreference ?? 'best_grade', summaries);
+  const badgeText = formatProfileBadge(summaries, selectedScale);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -124,7 +148,15 @@ export function ProfileScreen() {
           <View style={styles.profileCopy}>
             <Text style={styles.profileName}>{displayName}</Text>
             <Text style={styles.profileType}>{climberType}</Text>
-            <Text style={styles.bestBadge}>{badgeText}</Text>
+            <View style={styles.badgeRow}>
+              <Text style={styles.bestBadge}>{badgeText}</Text>
+              {weeklyStreak > 0 ? (
+                <View accessibilityLabel={`${weeklyStreak} week streak`} style={styles.streakBadge}>
+                  <Text style={styles.streakBadgeText}>{weeklyStreak}</Text>
+                  <Ionicons name="flame" size={15} color={colors.charcoal} />
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
 
@@ -134,12 +166,12 @@ export function ProfileScreen() {
             <Text style={styles.profileStatLabel}>Sessions</Text>
           </View>
           <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>{aggregateStats.totalClimbs}</Text>
-            <Text style={styles.profileStatLabel}>Climbs</Text>
+            <Text style={styles.profileStatValue}>0</Text>
+            <Text style={styles.profileStatLabel}>Followers</Text>
           </View>
           <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>{weeklyStreak}</Text>
-            <Text style={styles.profileStatLabel}>Week Streak</Text>
+            <Text style={styles.profileStatValue}>0</Text>
+            <Text style={styles.profileStatLabel}>Following</Text>
           </View>
         </View>
       </AppCard>
@@ -165,7 +197,7 @@ export function ProfileScreen() {
         ))}
       </View>
 
-      <SectionHeader title="Per Session" />
+      <SectionHeader title="Session History" />
 
       {isLoading ? (
         <AppCard style={styles.emptyState}>
@@ -190,7 +222,7 @@ export function ProfileScreen() {
                 { label: 'Climbs', value: String(summary.totalClimbs) },
                 { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
               ]}
-              subtitle={`${formatSessionDate(summary.session.startTime)} - ${summary.completedClimbs}/${summary.totalClimbs} sent - ${summary.totalAttempts} attempts`}
+              subtitle={formatSessionHistorySubtitle(summary)}
               title={getSessionDisplayName(summary.session)}
             />
           ))}
@@ -245,6 +277,12 @@ const styles = StyleSheet.create({
     bottom: 35,
     right: 25,
     transform: [{ rotate: '20deg' }],
+  },
+  badgeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   bestBadge: {
     alignSelf: 'flex-start',
@@ -401,6 +439,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: spacing.md,
     marginTop: 4,
+  },
+  streakBadge: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.amber,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  streakBadgeText: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    fontWeight: '900',
   },
   sessionList: {
     gap: spacing.md,

@@ -1,16 +1,28 @@
-import { Feather } from '@expo/vector-icons';
+import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { climbColours, climbGrades, holdTypes, warmUpHoldType } from '../features/climbs';
+import { Animated, Easing, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  buildFeatureSelection,
+  climbColours,
+  climbGrades,
+  featureSections,
+  getAdditionalFeatures,
+  isCommonFeature,
+  matchesFeatureSearch,
+  maxAdditionalFeatures,
+  warmUpHoldType,
+} from '../features/climbs';
 import { Climb } from '../domain/models';
+import { VGradeRange, formatEstimatedVGradeAverage } from '../domain/gradeScales';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { AppButton } from './AppButton';
 import { AppCard } from './AppCard';
-import { getMainHoldType, HoldIcon } from './HoldIcon';
+import { getMainFeature, HoldIcon } from './HoldIcon';
 import { TimerText } from './TimerText';
 
 const destructiveRed = '#B85A3B';
+const allFeatureSectionTitles = featureSections.map((section) => section.title);
 
 type EditableClimbInput = {
   colour?: string | null;
@@ -22,6 +34,9 @@ type ActiveClimbCardProps = {
   climb: Climb;
   disabled?: boolean;
   gradeOptions?: string[];
+  gradingScaleIsTape?: boolean;
+  gradingScaleVGradeRanges?: Record<string, VGradeRange>;
+  mainFeatureRequiredSignal?: number;
   onAddAttempt: () => void;
   onDelete: () => void;
   onGiveUp: () => void;
@@ -34,11 +49,12 @@ type DoneClimbCardProps = {
   celebrate?: boolean;
   climb: Climb;
   disabled?: boolean;
+  gradingScaleIsTape?: boolean;
   onDelete?: () => void;
   onEdit?: () => void;
 };
 
-type DropdownField = 'holds';
+type DropdownField = 'mainFeature' | 'additionalFeatures';
 
 function getVisibleHoldTypes(climb: Climb) {
   return climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType);
@@ -58,10 +74,37 @@ function formatColourDisplay(colours: string[]) {
   return colours.join(' & ');
 }
 
+function formatFeatureDisplay(features: string[]) {
+  if (features.length === 0) {
+    return 'None';
+  }
+
+  if (features.length === 1) {
+    return features[0] ?? 'None';
+  }
+
+  if (features.length === 2) {
+    return `${features[0] ?? ''} & ${features[1] ?? ''}`;
+  }
+
+  return `${features.slice(0, -1).join(', ')}, & ${features[features.length - 1] ?? ''}`;
+}
+
+function formatClimbGradeLabel(grade: string, isTapeScale: boolean) {
+  if (!isTapeScale || grade.toLocaleLowerCase().endsWith(' tape')) {
+    return grade;
+  }
+
+  return `${grade} Tape`;
+}
+
 export function ActiveClimbCard({
   climb,
   disabled = false,
   gradeOptions = climbGrades,
+  gradingScaleIsTape = false,
+  gradingScaleVGradeRanges = {},
+  mainFeatureRequiredSignal = 0,
   onAddAttempt,
   onDelete,
   onGiveUp,
@@ -71,20 +114,79 @@ export function ActiveClimbCard({
 }: ActiveClimbCardProps) {
   const [openField, setOpenField] = useState<DropdownField | null>(null);
   const [isDetailsEditorVisible, setIsDetailsEditorVisible] = useState(false);
+  const [featureSearch, setFeatureSearch] = useState('');
+  const [expandedFeatureSections, setExpandedFeatureSections] = useState<string[]>(allFeatureSectionTitles);
+  const [showMainFeatureRequired, setShowMainFeatureRequired] = useState(false);
   const elapsedSeconds = useElapsedSeconds(climb.startTime);
   const canUndo = climb.attemptCount > 1;
   const visibleHoldTypes = getVisibleHoldTypes(climb);
-  const mainHoldType = getMainHoldType(visibleHoldTypes);
+  const mainFeature = getMainFeature(visibleHoldTypes);
+  const additionalFeatures = getAdditionalFeatures(visibleHoldTypes);
   const selectedColours = parseColours(climb.colour);
+  const shouldShowHoldIcons = selectedColours.length > 0;
   const colourLabel = formatColourDisplay(selectedColours);
-  const holdLabel = mainHoldType ?? 'None';
+  const featureLabel = mainFeature ?? 'None';
+  const additionalFeatureLabel = mainFeature ? formatFeatureDisplay(additionalFeatures) : 'Choose main first';
   const [detailsGrade, setDetailsGrade] = useState(climb.grade);
   const [detailsColours, setDetailsColours] = useState(selectedColours);
   const detailsGradeIndex = Math.max(0, gradeOptions.indexOf(detailsGrade));
   const canSaveDetails = Boolean(detailsGrade);
+  const gradeLabel = formatClimbGradeLabel(climb.grade, gradingScaleIsTape);
 
-  function updateMainHoldType(holdType: string) {
-    onUpdate({ colour: climb.colour, grade: climb.grade, holdTypes: mainHoldType === holdType ? [] : [holdType] });
+  useEffect(() => {
+    if (mainFeature) {
+      setShowMainFeatureRequired(false);
+    }
+  }, [mainFeature]);
+
+  useEffect(() => {
+    if (!mainFeature && mainFeatureRequiredSignal > 0) {
+      setShowMainFeatureRequired(true);
+    }
+  }, [mainFeature, mainFeatureRequiredSignal]);
+
+  function updateMainFeature(feature: string) {
+    const nextMainFeature = mainFeature === feature ? null : feature;
+
+    onUpdate({
+      colour: climb.colour,
+      grade: climb.grade,
+      holdTypes: buildFeatureSelection(nextMainFeature, nextMainFeature ? additionalFeatures : []),
+    });
+  }
+
+  function completeClimb(action: () => void) {
+    if (!mainFeature) {
+      setShowMainFeatureRequired(true);
+      return;
+    }
+
+    action();
+  }
+
+  function toggleAdditionalFeature(feature: string) {
+    const selected = additionalFeatures.includes(feature);
+    const nextAdditionalFeatures = selected
+      ? additionalFeatures.filter((item) => item !== feature)
+      : [...additionalFeatures, feature].slice(0, maxAdditionalFeatures);
+
+    onUpdate({
+      colour: climb.colour,
+      grade: climb.grade,
+      holdTypes: buildFeatureSelection(mainFeature, nextAdditionalFeatures),
+    });
+  }
+
+  function openFeatureSelector(field: DropdownField) {
+    setFeatureSearch('');
+    setExpandedFeatureSections(allFeatureSectionTitles);
+    setOpenField(field);
+  }
+
+  function toggleFeatureSection(sectionTitle: string) {
+    setExpandedFeatureSections((current) =>
+      current.includes(sectionTitle) ? current.filter((title) => title !== sectionTitle) : [...current, sectionTitle],
+    );
   }
 
   function openDetailsEditor() {
@@ -111,22 +213,62 @@ export function ActiveClimbCard({
     onUpdate({
       colour: detailsColours.length > 0 ? stringifyColours(detailsColours) : null,
       grade: detailsGrade,
-      holdTypes: mainHoldType ? [mainHoldType] : [],
+      holdTypes: buildFeatureSelection(mainFeature, additionalFeatures),
     });
     setIsDetailsEditorVisible(false);
   }
 
   function renderDropdownOptions() {
-    if (openField === 'holds') {
-      return holdTypes.map((holdType) => (
-        <HoldOptionTile
-          colours={selectedColours}
-          holdType={holdType}
-          key={holdType}
-          onPress={() => updateMainHoldType(holdType)}
-          selected={mainHoldType === holdType}
-        />
-      ));
+    if (openField === 'mainFeature' || openField === 'additionalFeatures') {
+      const selectingAdditional = openField === 'additionalFeatures';
+      const sectionsWithMatches = featureSections
+        .map((section) => ({
+          ...section,
+          features: section.features.filter(
+            (feature) => matchesFeatureSearch(feature, featureSearch) && (!selectingAdditional || feature !== mainFeature),
+          ),
+        }))
+        .filter((section) => section.features.length > 0);
+
+      if (sectionsWithMatches.length === 0) {
+        return <Text style={styles.emptyFeatureSearchText}>No features found.</Text>;
+      }
+
+      return sectionsWithMatches.map((section) => {
+        const expanded = expandedFeatureSections.includes(section.title);
+
+        return (
+          <View key={section.title} style={styles.featureSection}>
+            <TouchableOpacity
+              activeOpacity={0.76}
+              accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${section.title}`}
+              accessibilityRole="button"
+              onPress={() => toggleFeatureSection(section.title)}
+              style={styles.featureSectionHeader}
+            >
+              <Text style={styles.featureSectionTitle}>{section.title}</Text>
+              <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.charcoal} />
+            </TouchableOpacity>
+            {expanded ? (
+              <View style={section.showIcons ? styles.holdOptionGrid : styles.featureTextGrid}>
+                {section.features.map((feature) => (
+                  <FeatureOptionTile
+                    colours={selectedColours}
+                    disabled={
+                      selectingAdditional && !additionalFeatures.includes(feature) && additionalFeatures.length >= maxAdditionalFeatures
+                    }
+                    feature={feature}
+                    key={feature}
+                    onPress={() => (selectingAdditional ? toggleAdditionalFeature(feature) : updateMainFeature(feature))}
+                    selected={selectingAdditional ? additionalFeatures.includes(feature) : mainFeature === feature}
+                    showIcon={section.showIcons && shouldShowHoldIcons}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      });
     }
 
     return null;
@@ -138,15 +280,15 @@ export function ActiveClimbCard({
         <View>
           <Text style={styles.eyebrow}>Current Climb</Text>
           <View style={styles.titleRow}>
-            {mainHoldType ? <HoldIcon colours={selectedColours} holdType={mainHoldType} size={46} /> : null}
-            <Text style={styles.grade}>{climb.grade}</Text>
+            {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={46} /> : null}
+            <Text style={styles.grade}>{gradeLabel}</Text>
             {climb.colour ? <Text style={styles.meta}>- {colourLabel}</Text> : null}
           </View>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
             activeOpacity={0.76}
-            accessibilityLabel="Edit climb grade and colour"
+            accessibilityLabel="Edit climb grade and hold colour"
             accessibilityRole="button"
             disabled={disabled}
             onPress={openDetailsEditor}
@@ -180,9 +322,18 @@ export function ActiveClimbCard({
 
       <View style={styles.dropdownGrid}>
         <SelectButton
-          label="Main hold type"
-          onPress={() => setOpenField('holds')}
-          value={holdLabel}
+          error={showMainFeatureRequired && !mainFeature}
+          helperText={showMainFeatureRequired && !mainFeature ? 'Pick a main feature first.' : undefined}
+          label="Main feature"
+          onPress={() => openFeatureSelector('mainFeature')}
+          value={featureLabel}
+          wide
+        />
+        <SelectButton
+          disabled={!mainFeature}
+          label="Additional features"
+          onPress={() => openFeatureSelector('additionalFeatures')}
+          value={additionalFeatureLabel}
           wide
         />
       </View>
@@ -200,15 +351,33 @@ export function ActiveClimbCard({
       </View>
 
       <View style={styles.doneActions}>
-        <AppButton disabled={disabled} icon="x-circle" onPress={onGiveUp} style={styles.halfButton} title="Give Up" variant="secondary" />
-        <AppButton disabled={disabled} icon="check-circle" onPress={onSentIt} style={styles.halfButton} title="Sent It" />
+        <AppButton
+          disabled={disabled}
+          icon="x-circle"
+          onPress={() => completeClimb(onGiveUp)}
+          style={styles.halfButton}
+          title="Give Up"
+          variant="secondary"
+        />
+        <AppButton
+          disabled={disabled}
+          icon="check-circle"
+          onPress={() => completeClimb(onSentIt)}
+          style={styles.halfButton}
+          title="Sent It"
+        />
       </View>
 
       <Modal animationType="fade" transparent visible={Boolean(openField)}>
         <View style={styles.modalOverlay}>
           <AppCard style={styles.dropdownCard}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Main hold type</Text>
+              <View>
+                <Text style={styles.dropdownTitle}>{openField === 'additionalFeatures' ? 'Additional features' : 'Main feature'}</Text>
+                {openField === 'additionalFeatures' ? (
+                  <Text style={styles.dropdownSubtitle}>Choose up to {maxAdditionalFeatures}</Text>
+                ) : null}
+              </View>
               <TouchableOpacity
                 activeOpacity={0.76}
                 accessibilityLabel="Close options"
@@ -219,7 +388,31 @@ export function ActiveClimbCard({
                 <Feather name="x" size={18} color={colors.charcoal} />
               </TouchableOpacity>
             </View>
-            <ScrollView contentContainerStyle={[styles.optionList, openField === 'holds' && styles.holdOptionGrid]}>
+            <View style={styles.searchBox}>
+              <Feather name="search" size={17} color={colors.muted} />
+              <TextInput
+                accessibilityLabel={openField === 'additionalFeatures' ? 'Search additional features' : 'Search main features'}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setFeatureSearch}
+                placeholder="Search"
+                placeholderTextColor={colors.muted}
+                style={styles.searchInput}
+                value={featureSearch}
+              />
+              {featureSearch ? (
+                <TouchableOpacity
+                  activeOpacity={0.76}
+                  accessibilityLabel="Clear feature search"
+                  accessibilityRole="button"
+                  onPress={() => setFeatureSearch('')}
+                  style={styles.searchClearButton}
+                >
+                  <Feather name="x" size={16} color={colors.muted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <ScrollView contentContainerStyle={styles.optionList}>
               {renderDropdownOptions()}
             </ScrollView>
             <AppButton icon="check" onPress={() => setOpenField(null)} title="Done" />
@@ -255,7 +448,24 @@ export function ActiveClimbCard({
                 >
                   <Feather name="minus" size={18} color={destructiveRed} />
                 </TouchableOpacity>
-                <Text style={styles.detailsStepperValue}>{detailsGrade}</Text>
+                {gradingScaleIsTape ? (
+                  <View style={styles.detailsTapeGradeValue}>
+                    <View style={styles.detailsTapeGradeMainRow}>
+                      <View
+                        style={[
+                          styles.detailsTapeGradeDot,
+                          { backgroundColor: climbColours.find((climbColour) => climbColour.label === detailsGrade)?.value ?? colors.stone },
+                        ]}
+                      />
+                      <Text style={styles.detailsStepperValue}>{detailsGrade}</Text>
+                    </View>
+                    <Text style={styles.detailsTapeGradeEstimate}>
+                      Est. {formatEstimatedVGradeAverage(detailsGrade, { gradingScaleVGradeRanges })}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.detailsStepperValue}>{detailsGrade}</Text>
+                )}
                 <TouchableOpacity
                   activeOpacity={0.76}
                   accessibilityLabel="Increase climb grade"
@@ -268,7 +478,7 @@ export function ActiveClimbCard({
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.detailsLabel}>Colour</Text>
+              <Text style={styles.detailsLabel}>Hold colour</Text>
               <View style={styles.detailsOptionWrap}>
                 {climbColours.map((climbColour) => {
                   const selected = detailsColours.includes(climbColour.label);
@@ -301,71 +511,107 @@ export function ActiveClimbCard({
 }
 
 function SelectButton({
+  disabled = false,
+  error = false,
+  helperText,
   label,
   onPress,
   value,
   wide = false,
 }: {
+  disabled?: boolean;
+  error?: boolean;
+  helperText?: string;
   label: string;
   onPress: () => void;
   value: string;
   wide?: boolean;
 }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.78}
-      accessibilityLabel={`${label}: ${value}`}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={[styles.selectButton, wide && styles.wideSelectButton]}
-    >
-      <View style={styles.selectTextWrap}>
-        <Text style={styles.selectLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.selectValue}>
-          {value}
-        </Text>
-      </View>
-      <Feather name="chevron-down" size={18} color={colors.charcoal} />
-    </TouchableOpacity>
+    <View style={[wide && styles.wideSelectButton]}>
+      <TouchableOpacity
+        activeOpacity={0.78}
+        accessibilityLabel={`${label}: ${value}`}
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={onPress}
+        style={[styles.selectButton, error && styles.selectButtonError, disabled && styles.disabledOptionRow]}
+      >
+        <View style={styles.selectTextWrap}>
+          <Text style={[styles.selectLabel, error && styles.selectLabelError]}>{label}</Text>
+          <Text numberOfLines={1} style={styles.selectValue}>
+            {value}
+          </Text>
+        </View>
+        <Feather name="chevron-down" size={18} color={error ? destructiveRed : colors.charcoal} />
+      </TouchableOpacity>
+      {helperText ? <Text style={styles.selectErrorText}>{helperText}</Text> : null}
+    </View>
   );
 }
 
-function HoldOptionTile({
+function FeatureOptionTile({
   colours,
-  holdType,
+  disabled = false,
+  feature,
   onPress,
   selected,
+  showIcon,
 }: {
   colours: string[];
-  holdType: string;
+  disabled?: boolean;
+  feature: string;
   onPress: () => void;
   selected: boolean;
+  showIcon: boolean;
 }) {
+  const common = isCommonFeature(feature);
+
   return (
     <TouchableOpacity
       activeOpacity={0.76}
-      accessibilityLabel={holdType}
+      accessibilityLabel={feature}
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      disabled={disabled}
       onPress={onPress}
-      style={[styles.holdOptionTile, selected && styles.selectedOptionRow]}
+      style={[showIcon ? styles.holdOptionTile : styles.featureTextOption, selected && styles.selectedOptionRow, disabled && styles.disabledOptionRow]}
     >
       {selected ? (
         <View style={styles.holdOptionCheck}>
           <Feather name="check" size={14} color={colors.charcoal} />
         </View>
       ) : null}
-      <HoldIcon colours={colours} holdType={holdType} size={58} />
-      <Text style={[styles.holdOptionText, selected && styles.selectedOptionText]}>{holdType}</Text>
+      {showIcon ? <HoldIcon colours={colours} holdType={feature} size={58} /> : null}
+      <View style={styles.featureOptionLabelRow}>
+        <Text
+          numberOfLines={showIcon ? 1 : 2}
+          style={[showIcon ? styles.holdOptionText : styles.featureTextOptionText, selected && styles.selectedOptionText]}
+        >
+          {feature}
+        </Text>
+        {common ? <FontAwesome name="star" size={14} color={colors.amber} style={styles.commonFeatureStar} /> : null}
+      </View>
     </TouchableOpacity>
   );
 }
 
-export function DoneClimbCard({ celebrate = false, climb, disabled = false, onDelete, onEdit }: DoneClimbCardProps) {
+export function DoneClimbCard({
+  celebrate = false,
+  climb,
+  disabled = false,
+  gradingScaleIsTape = false,
+  onDelete,
+  onEdit,
+}: DoneClimbCardProps) {
   const visibleHoldTypes = getVisibleHoldTypes(climb);
-  const mainHoldType = getMainHoldType(visibleHoldTypes);
+  const mainFeature = getMainFeature(visibleHoldTypes);
+  const additionalFeatures = getAdditionalFeatures(visibleHoldTypes);
+  const featureDetails = [mainFeature, ...additionalFeatures].filter(Boolean).join(' + ');
   const selectedColours = parseColours(climb.colour);
+  const shouldShowHoldIcons = selectedColours.length > 0;
   const colourLabel = formatColourDisplay(selectedColours);
+  const gradeLabel = formatClimbGradeLabel(climb.grade, gradingScaleIsTape);
   const cardScale = useRef(new Animated.Value(1)).current;
   const cardTranslateY = useRef(new Animated.Value(0)).current;
   const celebrationOpacity = useRef(new Animated.Value(0)).current;
@@ -444,8 +690,8 @@ export function DoneClimbCard({ celebrate = false, climb, disabled = false, onDe
         <View style={styles.doneCardContent}>
           <View style={styles.doneHeader}>
             <View style={styles.doneMain}>
-              {mainHoldType ? <HoldIcon colours={selectedColours} holdType={mainHoldType} size={34} /> : null}
-              <Text style={styles.doneGrade}>{climb.grade}</Text>
+              {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={34} /> : null}
+              <Text style={styles.doneGrade}>{gradeLabel}</Text>
               {climb.colour ? <Text style={styles.doneMeta}>{colourLabel}</Text> : null}
               <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.giveUpState]}>
                 {climb.completed ? 'Sent it' : 'Gave up'}
@@ -455,7 +701,7 @@ export function DoneClimbCard({ celebrate = false, climb, disabled = false, onDe
               {onEdit ? (
                 <TouchableOpacity
                   activeOpacity={0.76}
-                  accessibilityLabel={`Edit ${climb.grade} climb`}
+                  accessibilityLabel={`Edit ${gradeLabel} climb`}
                   accessibilityRole="button"
                   disabled={disabled}
                   onPress={onEdit}
@@ -467,7 +713,7 @@ export function DoneClimbCard({ celebrate = false, climb, disabled = false, onDe
               {onDelete ? (
                 <TouchableOpacity
                   activeOpacity={0.76}
-                  accessibilityLabel={`Delete ${climb.grade} climb`}
+                  accessibilityLabel={`Delete ${gradeLabel} climb`}
                   accessibilityRole="button"
                   disabled={disabled}
                   onPress={onDelete}
@@ -480,7 +726,7 @@ export function DoneClimbCard({ celebrate = false, climb, disabled = false, onDe
           </View>
           <Text style={styles.doneDetails}>
             {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'}
-            {mainHoldType ? ` - ${mainHoldType}` : ''}
+            {featureDetails ? ` - ${featureDetails}` : ''}
           </Text>
         </View>
       </AppCard>
@@ -544,6 +790,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
+  dropdownSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+  },
   detailsContent: {
     gap: spacing.md,
     paddingBottom: spacing.md,
@@ -598,6 +850,32 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     minWidth: 54,
     textAlign: 'center',
+  },
+  detailsTapeGradeDot: {
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 14,
+    width: 14,
+  },
+  detailsTapeGradeEstimate: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  detailsTapeGradeMainRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+  },
+  detailsTapeGradeValue: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 74,
+    paddingHorizontal: spacing.xs,
   },
   modalOverlay: {
     alignItems: 'center',
@@ -699,6 +977,66 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,150,102,0.18)',
     color: '#9A4E31',
   },
+  featureSection: {
+    gap: spacing.sm,
+    width: '100%',
+  },
+  featureSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 34,
+  },
+  featureSectionTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  featureTextGrid: {
+    gap: spacing.sm,
+    width: '100%',
+  },
+  featureTextOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  featureTextOptionText: {
+    color: colors.charcoal,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 18,
+    textAlign: 'left',
+  },
+  featureOptionLabelRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+  },
+  commonFeatureStar: {
+    marginLeft: spacing.sm,
+  },
+  emptyFeatureSearchText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
   grade: {
     ...typography.h2,
     color: colors.charcoal,
@@ -731,7 +1069,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   optionList: {
-    gap: spacing.sm,
+    gap: spacing.lg,
     paddingBottom: spacing.md,
   },
   holdOptionCheck: {
@@ -746,16 +1084,15 @@ const styles = StyleSheet.create({
     width: 24,
   },
   holdOptionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+    gap: spacing.sm,
+    width: '100%',
   },
   holdOptionText: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '800',
-    marginTop: spacing.xs,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   holdOptionTile: {
     alignItems: 'center',
@@ -763,11 +1100,13 @@ const styles = StyleSheet.create({
     borderColor: colors.stone,
     borderRadius: radius.lg,
     borderWidth: 1,
-    flexBasis: '47%',
-    justifyContent: 'center',
-    minHeight: 112,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'flex-start',
+    minHeight: 68,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '100%',
   },
   disabledOptionRow: {
     opacity: 0.42,
@@ -795,11 +1134,25 @@ const styles = StyleSheet.create({
     minWidth: 126,
     paddingHorizontal: spacing.md,
   },
+  selectButtonError: {
+    borderColor: destructiveRed,
+    borderWidth: 2,
+  },
+  selectErrorText: {
+    color: destructiveRed,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
   selectLabel: {
     color: colors.muted,
     fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
+  },
+  selectLabelError: {
+    color: destructiveRed,
   },
   selectTextWrap: {
     flex: 1,
@@ -809,6 +1162,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     marginTop: spacing.xs,
+  },
+  searchBox: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 46,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  searchClearButton: {
+    alignItems: 'center',
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  searchInput: {
+    color: colors.charcoal,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    minHeight: 42,
+    paddingVertical: 0,
   },
   selectedOptionRow: {
     backgroundColor: colors.mint,
