@@ -3,7 +3,7 @@ import { SessionSummaryScreen } from '../../src/screens/SessionSummaryScreen';
 
 export default function SessionSummaryRoute() {
   return (
-    <AppShell showBottomNav={false}>
+    <AppShell>
       <SessionSummaryScreen />
     </AppShell>
   );

@@ -86,6 +86,7 @@ export function HomeScreen() {
 
       <View style={styles.grid}>
         <StatCard
+          compact
           icon="triangle"
           accent="mint"
           value={isStatsLoading ? '...' : String(lifetimeStats.sessions)}
@@ -93,6 +94,7 @@ export function HomeScreen() {
           style={styles.stat}
         />
         <StatCard
+          compact
           icon="link"
           accent="amber"
           value={isStatsLoading ? '...' : String(lifetimeStats.totalClimbs)}
@@ -100,6 +102,7 @@ export function HomeScreen() {
           style={styles.stat}
         />
         <StatCard
+          compact
           icon="bar-chart-2"
           accent="lavender"
           value={isStatsLoading ? '...' : String(lifetimeStats.totalAttempts)}
@@ -107,6 +110,7 @@ export function HomeScreen() {
           style={styles.stat}
         />
         <StatCard
+          compact
           icon="star"
           accent="coral"
           value={isStatsLoading ? '...' : lifetimeStats.highestGradeCompleted ?? 'None'}
@@ -154,7 +158,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   stat: {
-    width: '48%',
+    width: '47.8%',
   },
   streakFlair: {
     alignItems: 'center',

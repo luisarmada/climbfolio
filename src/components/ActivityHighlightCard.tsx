@@ -16,18 +16,19 @@ type ActivityHighlightCardProps = {
   title: string;
 };
 
-export function ActivityHighlightCard({ icon = 'zap', onPress, stats, subtitle, title }: ActivityHighlightCardProps) {
+export function ActivityHighlightCard({ icon, onPress, stats, subtitle, title }: ActivityHighlightCardProps) {
   const content = (
     <AppCard style={styles.card}>
       <View style={styles.topRow}>
-        <View style={styles.iconCircle}>
-          <Feather name={icon} size={19} color={colors.charcoal} />
-        </View>
+        {icon ? (
+          <View style={styles.iconCircle}>
+            <Feather name={icon} size={19} color={colors.charcoal} />
+          </View>
+        ) : null}
         <View style={styles.copy}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
-        {onPress ? <Feather name="chevron-right" size={21} color={colors.muted} /> : null}
       </View>
 
       <View style={styles.statsRow}>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Climb, Session } from '../../domain/models';
+import { Climb, EndSessionInput, Session } from '../../domain/models';
 import { hapticsService } from '../../platform/haptics.service';
 import { liveActivityService } from '../../platform/live-activity.service';
 import { climbService, StartClimbInput } from '../climbs';
@@ -19,7 +19,7 @@ type ActiveSessionStore = {
   deleteClimb: (climbId: string) => Promise<Climb | null>;
   discardActiveClimb: () => Promise<Climb | null>;
   discardSession: () => Promise<Session | null>;
-  endSession: () => Promise<Session | null>;
+  endSession: (input?: EndSessionInput) => Promise<Session | null>;
   finishActiveClimb: (completed: boolean) => Promise<Climb | null>;
   quickAddWarmUpClimb: (grade: string) => Promise<Climb | null>;
   reorderTimeline: (climbIds: string[]) => Promise<void>;
@@ -128,7 +128,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
     }
   },
 
-  async endSession() {
+  async endSession(input) {
     const session = get().activeSession;
 
     if (!session) {
@@ -144,7 +144,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
         await climbService.finishClimb(activeClimb.id, activeClimb.completed);
       }
 
-      const endedSession = await sessionService.endSession(session.id);
+      const endedSession = await sessionService.endSession(session.id, input);
       set({
         activeClimb: null,
         activeSession: null,

@@ -2,9 +2,14 @@ import { DatabaseClient, SqlParams } from './types';
 
 type SessionRow = {
   id: string;
+  name?: string | null;
+  description?: string | null;
   start_time: string;
   end_time: string | null;
   duration_seconds: number | null;
+  grading_scale_grades_json?: string;
+  grading_scale_name?: string;
+  grading_scale_type?: string;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -38,10 +43,37 @@ type AttemptRow = {
   deleted_at: string | null;
 };
 
+type UserProfileRow = {
+  id: string;
+  display_name: string;
+  climber_type: string;
+  badge_preference: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+type ClimbingPreferencesRow = {
+  custom_grades_json?: string;
+  custom_scales_json?: string;
+  custom_grading_scale_name?: string;
+  id: string;
+  default_climb_grade: string;
+  default_quick_grade: string;
+  grading_scale_type?: string;
+  require_colour_selection: number;
+  selected_grading_scale_id?: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 type WebDatabaseState = {
   attempts: AttemptRow[];
   climbs: ClimbRow[];
+  climbingPreferences: ClimbingPreferencesRow[];
   migrations: { applied_at: string; version: number }[];
+  profiles: UserProfileRow[];
   sessions: SessionRow[];
 };
 
@@ -52,7 +84,9 @@ function createEmptyState(): WebDatabaseState {
   return {
     attempts: [],
     climbs: [],
+    climbingPreferences: [],
     migrations: [],
+    profiles: [],
     sessions: [],
   };
 }
@@ -84,6 +118,21 @@ function readState(): WebDatabaseState {
       climbs: state.climbs.map((climb) => ({
         ...climb,
         sort_order: climb.sort_order ?? Date.parse(climb.start_time),
+      })),
+      climbingPreferences: (state.climbingPreferences ?? []).map((preferences) => ({
+        ...preferences,
+        custom_scales_json: preferences.custom_scales_json ?? '[]',
+        selected_grading_scale_id: preferences.selected_grading_scale_id ?? preferences.grading_scale_type ?? 'v_scale',
+      })),
+      profiles: state.profiles ?? [],
+      sessions: (state.sessions ?? []).map((session) => ({
+        ...session,
+        description: session.description ?? null,
+        grading_scale_grades_json:
+          session.grading_scale_grades_json ?? '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_name: session.grading_scale_name ?? 'V Scale',
+        grading_scale_type: session.grading_scale_type ?? 'v_scale',
+        name: session.name ?? null,
       })),
     };
   } catch {
@@ -125,12 +174,57 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into sessions')) {
-      const [id, startTime, endTime, durationSeconds, createdAt, updatedAt, deletedAt] = params;
+      const [
+        id,
+        maybeNameOrStartTime,
+        maybeDescriptionOrEndTime,
+        maybeStartTimeOrDurationSeconds,
+        maybeEndTimeOrGradingScaleType,
+        maybeDurationSecondsOrGradingScaleName,
+        maybeGradingScaleTypeOrGradesJson,
+        maybeGradingScaleNameOrCreatedAt,
+        maybeGradingScaleGradesJsonOrUpdatedAt,
+        maybeCreatedAtOrDeletedAt,
+        maybeUpdatedAt,
+        maybeDeletedAt,
+      ] = params;
+      const hasMetadata = params.length === 12;
+      const hasGradingScale = params.length === 12 || params.length === 10;
+      const name = hasMetadata ? maybeNameOrStartTime : null;
+      const description = hasMetadata ? maybeDescriptionOrEndTime : null;
+      const startTime = hasMetadata ? maybeStartTimeOrDurationSeconds : maybeNameOrStartTime;
+      const endTime = hasMetadata ? maybeEndTimeOrGradingScaleType : maybeDescriptionOrEndTime;
+      const durationSeconds = hasMetadata ? maybeDurationSecondsOrGradingScaleName : maybeStartTimeOrDurationSeconds;
+      const gradingScaleType = hasMetadata ? maybeGradingScaleTypeOrGradesJson : maybeEndTimeOrGradingScaleType;
+      const gradingScaleName = hasMetadata ? maybeGradingScaleNameOrCreatedAt : maybeDurationSecondsOrGradingScaleName;
+      const gradingScaleGradesJson = hasMetadata ? maybeGradingScaleGradesJsonOrUpdatedAt : maybeGradingScaleTypeOrGradesJson;
+      const createdAt = hasMetadata
+        ? maybeCreatedAtOrDeletedAt
+        : hasGradingScale
+          ? maybeGradingScaleNameOrCreatedAt
+          : maybeEndTimeOrGradingScaleType;
+      const updatedAt = hasMetadata
+        ? maybeUpdatedAt
+        : hasGradingScale
+          ? maybeGradingScaleGradesJsonOrUpdatedAt
+          : maybeDurationSecondsOrGradingScaleName;
+      const deletedAt = hasMetadata
+        ? maybeDeletedAt
+        : hasGradingScale
+          ? maybeCreatedAtOrDeletedAt
+          : maybeGradingScaleTypeOrGradesJson;
       this.state.sessions.push({
         id: String(id),
+        name: name == null ? null : String(name),
+        description: description == null ? null : String(description),
         start_time: String(startTime),
         end_time: endTime == null ? null : String(endTime),
         duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
+        grading_scale_grades_json: hasGradingScale
+          ? String(gradingScaleGradesJson)
+          : '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_name: hasGradingScale ? String(gradingScaleName) : 'V Scale',
+        grading_scale_type: hasGradingScale ? String(gradingScaleType) : 'v_scale',
         created_at: String(createdAt),
         updated_at: String(updatedAt),
         deleted_at: deletedAt == null ? null : String(deletedAt),
@@ -139,15 +233,123 @@ class WebDatabase implements DatabaseClient {
       return;
     }
 
+    if (normalizedSql.startsWith('insert into user_profile')) {
+      const [id, displayName, climberType, badgePreference, createdAt, updatedAt, deletedAt] = params;
+      this.state.profiles.push({
+        id: String(id),
+        badge_preference: String(badgePreference),
+        climber_type: String(climberType),
+        created_at: String(createdAt),
+        deleted_at: deletedAt == null ? null : String(deletedAt),
+        display_name: String(displayName),
+        updated_at: String(updatedAt),
+      });
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('insert into climbing_preferences')) {
+      const [
+        id,
+        defaultClimbGrade,
+        defaultQuickGrade,
+        requireColourSelection,
+        gradingScaleType,
+        selectedGradingScaleId,
+        customGradingScaleName,
+        customGradesJson,
+        customScalesJson,
+        createdAt,
+        updatedAt,
+        deletedAt,
+      ] = params;
+      this.state.climbingPreferences.push({
+        id: String(id),
+        created_at: String(createdAt),
+        custom_grades_json: String(customGradesJson),
+        custom_grading_scale_name: String(customGradingScaleName),
+        default_climb_grade: String(defaultClimbGrade),
+        default_quick_grade: String(defaultQuickGrade),
+        deleted_at: deletedAt == null ? null : String(deletedAt),
+        grading_scale_type: String(gradingScaleType),
+        selected_grading_scale_id: String(selectedGradingScaleId),
+        custom_scales_json: String(customScalesJson),
+        require_colour_selection: Number(requireColourSelection),
+        updated_at: String(updatedAt),
+      });
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('update climbing_preferences')) {
+      const [
+        defaultClimbGrade,
+        defaultQuickGrade,
+        requireColourSelection,
+        gradingScaleType,
+        selectedGradingScaleId,
+        customGradingScaleName,
+        customGradesJson,
+        customScalesJson,
+        updatedAt,
+        id,
+      ] = params;
+      this.state.climbingPreferences = this.state.climbingPreferences.map((preferences) =>
+        preferences.id === id
+          ? {
+              ...preferences,
+              custom_grades_json: String(customGradesJson),
+              custom_grading_scale_name: String(customGradingScaleName),
+              default_climb_grade: String(defaultClimbGrade),
+              default_quick_grade: String(defaultQuickGrade),
+              grading_scale_type: String(gradingScaleType),
+              selected_grading_scale_id: String(selectedGradingScaleId),
+              custom_scales_json: String(customScalesJson),
+              require_colour_selection: Number(requireColourSelection),
+              updated_at: String(updatedAt),
+            }
+          : preferences,
+      );
+      writeState(this.state);
+      return;
+    }
+
+    if (normalizedSql.startsWith('update user_profile')) {
+      const [displayName, climberType, badgePreference, updatedAt, id] = params;
+      this.state.profiles = this.state.profiles.map((profile) =>
+        profile.id === id
+          ? {
+              ...profile,
+              badge_preference: String(badgePreference),
+              climber_type: String(climberType),
+              display_name: String(displayName),
+              updated_at: String(updatedAt),
+            }
+          : profile,
+      );
+      writeState(this.state);
+      return;
+    }
+
     if (normalizedSql.startsWith('update sessions')) {
-      const [endTime, durationSeconds, deletedAt, updatedAt, id] = params;
+      const [maybeNameOrEndTime, maybeDescriptionOrDurationSeconds, maybeEndTimeOrDeletedAt, maybeDurationSecondsOrUpdatedAt, maybeDeletedAtOrId, maybeUpdatedAt, maybeId] = params;
+      const hasMetadata = params.length === 7;
+      const name = hasMetadata ? maybeNameOrEndTime : undefined;
+      const description = hasMetadata ? maybeDescriptionOrDurationSeconds : undefined;
+      const endTime = hasMetadata ? maybeEndTimeOrDeletedAt : maybeNameOrEndTime;
+      const durationSeconds = hasMetadata ? maybeDurationSecondsOrUpdatedAt : maybeDescriptionOrDurationSeconds;
+      const deletedAt = hasMetadata ? maybeDeletedAtOrId : maybeEndTimeOrDeletedAt;
+      const updatedAt = hasMetadata ? maybeUpdatedAt : maybeDurationSecondsOrUpdatedAt;
+      const id = hasMetadata ? maybeId : maybeDeletedAtOrId;
       this.state.sessions = this.state.sessions.map((session) =>
         session.id === id
           ? {
               ...session,
               deleted_at: deletedAt == null ? null : String(deletedAt),
+              description: hasMetadata ? (description == null ? null : String(description)) : session.description,
               duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
               end_time: endTime == null ? null : String(endTime),
+              name: hasMetadata ? (name == null ? null : String(name)) : session.name,
               updated_at: String(updatedAt),
             }
           : session,
@@ -300,6 +502,28 @@ class WebDatabase implements DatabaseClient {
       }
 
       return sortByDesc(rows, (session) => session.start_time) as T[];
+    }
+
+    if (normalizedSql.includes('from user_profile')) {
+      const [profileId] = params;
+      let rows = this.state.profiles;
+
+      if (normalizedSql.includes('where id = ?')) {
+        rows = rows.filter((profile) => profile.id === profileId && profile.deleted_at === null);
+      }
+
+      return rows as T[];
+    }
+
+    if (normalizedSql.includes('from climbing_preferences')) {
+      const [preferencesId] = params;
+      let rows = this.state.climbingPreferences;
+
+      if (normalizedSql.includes('where id = ?')) {
+        rows = rows.filter((preferences) => preferences.id === preferencesId && preferences.deleted_at === null);
+      }
+
+      return rows as T[];
     }
 
     if (normalizedSql.includes('from climbs') && normalizedSql.includes('coalesce(sum')) {

@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { getSessionDisplayName } from '../features/sessions';
 import {
   formatDuration,
   formatOneDecimal,
@@ -12,6 +13,10 @@ import {
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
+
+function formatColourDisplay(colour: string | null) {
+  return colour?.split(',').map((item) => item.trim()).filter(Boolean).join(' & ') || 'No colour';
+}
 
 export function SessionDetailScreen() {
   const router = useRouter();
@@ -62,13 +67,16 @@ export function SessionDetailScreen() {
     );
   }
 
+  const sessionTitle = getSessionDisplayName(summary.session);
+
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>Session Detail</Text>
+      <Text style={styles.title}>{sessionTitle}</Text>
       <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
 
       <AppCard style={styles.summaryCard}>
         <Text style={styles.cardTitle}>Saved Session</Text>
+        {summary.session.description ? <Text style={styles.sessionDescription}>{summary.session.description}</Text> : null}
         <View style={styles.summaryGrid}>
           <View>
             <Text style={styles.summaryValue}>{formatDuration(summary.session.durationSeconds)}</Text>
@@ -107,7 +115,7 @@ export function SessionDetailScreen() {
                     {index + 1}. {climb.grade}
                   </Text>
                   <Text style={styles.climbMeta}>
-                    {climb.colour ?? 'No colour'} - {climb.completed ? 'Sent it' : 'Gave up'}
+                    {formatColourDisplay(climb.colour)} - {climb.completed ? 'Sent it' : 'Gave up'}
                   </Text>
                 </View>
                 <View style={[styles.statusPill, climb.completed ? styles.sentPill : styles.gaveUpPill]}>
@@ -118,7 +126,7 @@ export function SessionDetailScreen() {
                 {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'} - {formatDuration(climb.durationSeconds)}
               </Text>
               <Text style={styles.climbDetail}>
-                {climb.holdTypes.length > 0 ? climb.holdTypes.join(', ') : 'No type selected'}
+                {climb.holdTypes.length > 0 ? climb.holdTypes.join(', ') : 'No hold type selected'}
               </Text>
             </AppCard>
           ))}
@@ -173,7 +181,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   content: {
-    paddingBottom: spacing.xxxl,
+    paddingBottom: 132,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
@@ -230,6 +238,13 @@ const styles = StyleSheet.create({
   summaryCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+  },
+  sessionDescription: {
+    color: colors.muted,
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 22,
+    marginBottom: spacing.lg,
   },
   summaryGrid: {
     flexDirection: 'row',
