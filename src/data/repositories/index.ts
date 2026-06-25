@@ -4,6 +4,8 @@ export { climbRepository } from './climb.repository';
 export type { ClimbRepository } from './climb.repository';
 export { climbingPreferencesRepository } from './climbing-preferences.repository';
 export type { ClimbingPreferencesRepository } from './climbing-preferences.repository';
+export { locationRepository } from './location.repository';
+export type { LocationRepository } from './location.repository';
 export { profileRepository } from './profile.repository';
 export type { ProfileRepository } from './profile.repository';
 export { sessionRepository } from './session.repository';

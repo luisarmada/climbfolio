@@ -1,4 +1,4 @@
-export type ProfileBadgePreference = 'best_grade' | 'sessions' | 'weekly_streak' | 'local_only';
+export type ProfileBadgePreference = 'best_grade';
 
 export type UserProfile = {
   id: string;

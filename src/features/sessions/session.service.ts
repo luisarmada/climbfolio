@@ -3,6 +3,7 @@ import { climbRepository, sessionRepository, statsRepository } from '../../data/
 import { resolveSelectedGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
 import { climbingPreferencesService } from '../preferences';
+import { locationService } from '../locations';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
 import { normalizeSessionMetadata } from './session.finalization';
 
@@ -25,18 +26,35 @@ async function toActiveSessionState(session: Session): Promise<ActiveSessionStat
 }
 
 export const sessionService = {
-  async startSession(): Promise<ActiveSessionState> {
+  async startSession(input: { locationId?: string | null } = {}): Promise<ActiveSessionState> {
     const existingSession = await sessionRepository.getActive();
     const preferences = existingSession ? null : await climbingPreferencesService.getLocalPreferences();
-    const gradingScale = preferences ? resolveSelectedGradingScale(preferences) : null;
+    const locations = existingSession ? [] : await locationService.listLocations();
+    const selectedLocation =
+      input.locationId === null
+        ? null
+        : input.locationId
+          ? locations.find((location) => location.id === input.locationId) ?? null
+          : locations.find((location) => location.isSelected) ?? null;
+    const gradingScale = preferences
+      ? resolveSelectedGradingScale({
+          customScales: preferences.customScales,
+          selectedGradingScaleId: selectedLocation?.gradingScaleId ?? preferences.selectedGradingScaleId,
+        })
+      : null;
     const session =
       existingSession ??
       (await sessionRepository.create(
         gradingScale
           ? {
               gradingScaleGrades: gradingScale.gradingScaleGrades,
+              gradingScaleIsTape: gradingScale.gradingScaleIsTape,
               gradingScaleName: gradingScale.gradingScaleName,
               gradingScaleType: gradingScale.gradingScaleType,
+              gradingScaleVGradeRanges: gradingScale.gradingScaleVGradeRanges,
+              locationId: selectedLocation?.id ?? null,
+              locationName: selectedLocation?.name ?? null,
+              locationType: selectedLocation?.type ?? null,
             }
           : undefined,
       ));

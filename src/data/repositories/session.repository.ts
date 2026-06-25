@@ -1,5 +1,5 @@
 import { CreateSessionInput, EndSessionInput, Session, UpdateSessionInput } from '../../domain/models';
-import { GradingScaleType, resolveGradingScale } from '../../domain/gradeScales';
+import { GradingScaleType, VGradeRange, normalizeVGradeRange, resolveGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
 import { createLocalId } from '../../utils/ids';
 import { secondsBetween } from '../../utils/time';
@@ -15,6 +15,11 @@ type SessionRow = {
   grading_scale_type?: string | null;
   grading_scale_name?: string | null;
   grading_scale_grades_json?: string | null;
+  grading_scale_is_tape?: number | null;
+  grading_scale_v_ranges_json?: string | null;
+  location_id?: string | null;
+  location_name?: string | null;
+  location_type?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -43,6 +48,35 @@ function parseJsonArray(value: string | null | undefined) {
   }
 }
 
+function parseVGradeRanges(value: string | null | undefined) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<Record<string, VGradeRange>>((ranges, [grade, range]) => {
+      if (!range || typeof range !== 'object' || Array.isArray(range)) {
+        return ranges;
+      }
+
+      const maybeRange = range as Partial<VGradeRange>;
+      ranges[grade] = normalizeVGradeRange({
+        min: typeof maybeRange.min === 'string' ? maybeRange.min : 'V0',
+        max: typeof maybeRange.max === 'string' ? maybeRange.max : 'V0',
+      });
+      return ranges;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
 function normalizeScaleType(value: string | null | undefined): GradingScaleType {
   return value === 'font' || value === 'custom' || value === 'v_scale' ? value : 'v_scale';
 }
@@ -51,6 +85,7 @@ function mapSession(row: SessionRow): Session {
   const fallbackScale = resolveGradingScale({ gradingScaleType: 'v_scale' });
   const gradingScaleType = normalizeScaleType(row.grading_scale_type);
   const gradingScaleGrades = parseJsonArray(row.grading_scale_grades_json);
+  const gradingScaleVGradeRanges = parseVGradeRanges(row.grading_scale_v_ranges_json);
 
   return {
     id: row.id,
@@ -60,8 +95,14 @@ function mapSession(row: SessionRow): Session {
     endTime: row.end_time,
     durationSeconds: row.duration_seconds,
     gradingScaleGrades: gradingScaleGrades.length > 0 ? gradingScaleGrades : fallbackScale.gradingScaleGrades,
+    gradingScaleIsTape: Boolean(row.grading_scale_is_tape),
     gradingScaleName: row.grading_scale_name || fallbackScale.gradingScaleName,
     gradingScaleType,
+    gradingScaleVGradeRanges:
+      Object.keys(gradingScaleVGradeRanges).length > 0 ? gradingScaleVGradeRanges : fallbackScale.gradingScaleVGradeRanges,
+    locationId: row.location_id ?? null,
+    locationName: row.location_name ?? null,
+    locationType: row.location_type ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
@@ -85,8 +126,13 @@ export const sessionRepository: SessionRepository = {
       endTime: null,
       durationSeconds: null,
       gradingScaleGrades: gradingScale.gradingScaleGrades,
+      gradingScaleIsTape: Boolean(input.gradingScaleIsTape ?? gradingScale.gradingScaleIsTape),
       gradingScaleName: gradingScale.gradingScaleName,
       gradingScaleType: gradingScale.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges ?? gradingScale.gradingScaleVGradeRanges,
+      locationId: input.locationId ?? null,
+      locationName: input.locationName ?? null,
+      locationType: input.locationType ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null,
@@ -96,8 +142,9 @@ export const sessionRepository: SessionRepository = {
       `
         INSERT INTO sessions (
           id, name, description, start_time, end_time, duration_seconds, grading_scale_type, grading_scale_name,
-          grading_scale_grades_json, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          grading_scale_grades_json, grading_scale_is_tape, grading_scale_v_ranges_json, location_id, location_name, location_type,
+          created_at, updated_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       [
         session.id,
@@ -109,6 +156,11 @@ export const sessionRepository: SessionRepository = {
         session.gradingScaleType,
         session.gradingScaleName,
         JSON.stringify(session.gradingScaleGrades),
+        session.gradingScaleIsTape ? 1 : 0,
+        JSON.stringify(session.gradingScaleVGradeRanges),
+        session.locationId,
+        session.locationName,
+        session.locationType,
         session.createdAt,
         session.updatedAt,
         session.deletedAt,

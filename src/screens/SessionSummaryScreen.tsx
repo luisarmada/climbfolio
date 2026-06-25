@@ -11,6 +11,7 @@ import {
   formatOneDecimal,
   formatOptionalDuration,
   formatSessionDate,
+  formatSessionTime,
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
@@ -96,7 +97,7 @@ export function SessionSummaryScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>{sessionTitle}</Text>
-      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
+      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
 
       <View style={styles.grid}>
         {stats.map((stat) => (
@@ -116,10 +117,12 @@ export function SessionSummaryScreen() {
         <Text style={styles.detailTitle}>Session notes</Text>
         <View style={styles.detailRows}>
           {summary.session.description ? <Text style={styles.detailRow}>{summary.session.description}</Text> : null}
+          <Text style={styles.detailRow}>Location: {summary.session.locationName ?? 'Not set'}</Text>
+          {summary.session.locationType ? <Text style={styles.detailRow}>Location type: {summary.session.locationType}</Text> : null}
           <Text style={styles.detailRow}>Completion rate: {summary.completionRate}%</Text>
           <Text style={styles.detailRow}>Highest attempted: {summary.highestGradeAttempted ?? 'None'}</Text>
-          <Text style={styles.detailRow}>Most common colour: {summary.mostCommonColour ?? 'None'}</Text>
-          <Text style={styles.detailRow}>Most common hold type: {summary.mostCommonHoldType ?? 'None'}</Text>
+          <Text style={styles.detailRow}>Most common hold colour: {summary.mostCommonColour ?? 'None'}</Text>
+          <Text style={styles.detailRow}>Most common feature: {summary.mostCommonHoldType ?? 'None'}</Text>
           <Text style={styles.detailRow}>
             Average rest between attempts: {formatOptionalDuration(summary.averageRestBetweenAttemptsSeconds)}
           </Text>
@@ -193,6 +196,5 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 39,
   },
 });

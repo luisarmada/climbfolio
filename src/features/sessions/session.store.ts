@@ -26,7 +26,7 @@ type ActiveSessionStore = {
   restoreActiveSession: () => Promise<Session | null>;
   setActiveClimbCompleted: (completed: boolean) => Promise<Climb | null>;
   startClimb: (input: Omit<StartClimbInput, 'sessionId'>) => Promise<Climb>;
-  startSession: () => Promise<Session>;
+  startSession: (input?: { locationId?: string | null }) => Promise<Session>;
   undoAttempt: () => Promise<Climb | null>;
   updateActiveClimb: (input: Omit<StartClimbInput, 'sessionId'>) => Promise<Climb | null>;
   updateLoggedClimb: (
@@ -83,11 +83,11 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
     set({ error: null });
   },
 
-  async startSession() {
+  async startSession(input) {
     set({ error: null, isLoading: true });
 
     try {
-      const activeSession = await sessionService.startSession();
+      const activeSession = await sessionService.startSession(input);
       set({
         ...getStatePatch(activeSession),
         error: null,

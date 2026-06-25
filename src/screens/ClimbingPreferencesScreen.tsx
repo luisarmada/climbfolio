@@ -1,17 +1,23 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import {
   CustomGradingScale,
+  VGradeRange,
   builtInGradingScales,
+  formatVGradeRange,
   normalizeCustomGrades,
   normalizeCustomScales,
+  normalizeVGradeRange,
   resolveSelectedGradingScale,
+  vScaleGrades,
 } from '../domain/gradeScales';
+import { climbColours } from '../features/climbs';
 import { useClimbingPreferencesStore } from '../features/preferences';
 
 function createCustomScaleId() {
@@ -30,6 +36,14 @@ function moveItem(items: string[], fromIndex: number, toIndex: number) {
   return nextItems;
 }
 
+function createDefaultVGradeRanges(grades: string[]) {
+  return grades.reduce<Record<string, VGradeRange>>((ranges, grade, index) => {
+    const vGrade = vScaleGrades[Math.min(index + 1, vScaleGrades.length - 1)] ?? 'V0';
+    ranges[grade] = { min: vGrade, max: vGrade };
+    return ranges;
+  }, {});
+}
+
 export function ClimbingPreferencesScreen() {
   const router = useRouter();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
@@ -40,7 +54,9 @@ export function ClimbingPreferencesScreen() {
   const [customScales, setCustomScales] = useState<CustomGradingScale[]>([]);
   const [draftGrade, setDraftGrade] = useState('');
   const [draftGrades, setDraftGrades] = useState<string[]>([]);
+  const [draftIsTape, setDraftIsTape] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [draftVGradeRanges, setDraftVGradeRanges] = useState<Record<string, VGradeRange>>({});
   const [editingScaleId, setEditingScaleId] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
@@ -86,9 +102,12 @@ export function ClimbingPreferencesScreen() {
   const canSaveDraft = draftName.trim().length > 0 && normalizedDraftGrades.length > 0;
 
   function openCreateEditor() {
+    const defaultGrades = ['Yellow', 'Green', 'Blue', 'Red'];
     setDraftGrade('');
-    setDraftGrades(['Yellow', 'Green', 'Blue', 'Red']);
+    setDraftGrades(defaultGrades);
+    setDraftIsTape(false);
     setDraftName('');
+    setDraftVGradeRanges(createDefaultVGradeRanges(defaultGrades));
     setEditingScaleId(null);
     setIsEditorVisible(true);
   }
@@ -96,7 +115,9 @@ export function ClimbingPreferencesScreen() {
   function openEditEditor(scale: CustomGradingScale) {
     setDraftGrade('');
     setDraftGrades(scale.grades);
+    setDraftIsTape(Boolean(scale.isTape));
     setDraftName(scale.name);
+    setDraftVGradeRanges(scale.vGradeRanges);
     setEditingScaleId(scale.id);
     setIsEditorVisible(true);
   }
@@ -109,7 +130,67 @@ export function ClimbingPreferencesScreen() {
     }
 
     setDraftGrades(nextGrades);
+    const nextGrade = draftGrade.trim();
+    setDraftVGradeRanges((ranges) => ({
+      ...ranges,
+      [nextGrade]: normalizeVGradeRange(ranges[nextGrade], vScaleGrades[Math.min(nextGrades.length, vScaleGrades.length - 1)] ?? 'V0'),
+    }));
     setDraftGrade('');
+  }
+
+  function toggleDraftIsTape() {
+    setDraftIsTape((current) => {
+      const nextIsTape = !current;
+
+      if (nextIsTape) {
+        const colourLabels = climbColours.map((colour) => colour.label);
+        const nextGrades = draftGrades.filter((grade) => colourLabels.includes(grade));
+        setDraftGrades(nextGrades);
+        setDraftVGradeRanges(createDefaultVGradeRanges(nextGrades));
+        setDraftGrade('');
+      }
+
+      return nextIsTape;
+    });
+  }
+
+  function toggleTapeGrade(grade: string) {
+    const selected = draftGrades.includes(grade);
+    const nextGrades = selected ? draftGrades.filter((item) => item !== grade) : [...draftGrades, grade];
+
+    setDraftGrades(nextGrades);
+    setDraftVGradeRanges((ranges) => {
+      const nextRanges = { ...ranges };
+
+      if (selected) {
+        delete nextRanges[grade];
+        return nextRanges;
+      }
+
+      nextRanges[grade] = normalizeVGradeRange(ranges[grade], vScaleGrades[Math.min(nextGrades.length, vScaleGrades.length - 1)] ?? 'V0');
+      return nextRanges;
+    });
+  }
+
+  function updateDraftVRange(grade: string, side: keyof VGradeRange, direction: -1 | 1) {
+    setDraftVGradeRanges((ranges) => {
+      const currentRange = normalizeVGradeRange(ranges[grade]);
+      const currentIndex = vScaleGrades.indexOf(currentRange[side]);
+      const nextGrade = vScaleGrades[Math.max(0, Math.min(vScaleGrades.length - 1, currentIndex + direction))] ?? currentRange[side];
+      return {
+        ...ranges,
+        [grade]: normalizeVGradeRange({ ...currentRange, [side]: nextGrade }),
+      };
+    });
+  }
+
+  function removeDraftGrade(grade: string, index: number) {
+    setDraftGrades(draftGrades.filter((_, itemIndex) => itemIndex !== index));
+    setDraftVGradeRanges((ranges) => {
+      const nextRanges = { ...ranges };
+      delete nextRanges[grade];
+      return nextRanges;
+    });
   }
 
   function handleSaveDraft() {
@@ -120,7 +201,12 @@ export function ClimbingPreferencesScreen() {
     const nextScale = {
       grades: normalizedDraftGrades,
       id: editingScaleId ?? createCustomScaleId(),
+      isTape: draftIsTape,
       name: draftName.trim(),
+      vGradeRanges: normalizedDraftGrades.reduce<Record<string, VGradeRange>>((ranges, grade) => {
+        ranges[grade] = normalizeVGradeRange(draftVGradeRanges[grade]);
+        return ranges;
+      }, {}),
     };
     const nextScales = normalizeCustomScales(
       editingScaleId
@@ -166,14 +252,13 @@ export function ClimbingPreferencesScreen() {
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
         </TouchableOpacity>
         <View style={styles.titleBlock}>
-          <Text style={styles.eyebrow}>Settings</Text>
-          <Text style={styles.title}>Climbing</Text>
+          <Text style={styles.title}>Grade scales</Text>
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Grading scale</Text>
-        <Text style={styles.sectionCopy}>New sessions use this scale. Existing sessions keep the scale they started with.</Text>
+        <Text style={styles.sectionTitle}>Default grade scale</Text>
+        <Text style={styles.sectionCopy}>New sessions use this scale unless their selected location has its own mapping.</Text>
         <AppCard style={styles.toggleCard}>
           {builtInGradingScales.map((option, index) => {
             const selected = selectedGradingScaleId === option.gradingScaleType;
@@ -289,8 +374,7 @@ export function ClimbingPreferencesScreen() {
         <AppButton disabled={isLoading} onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Preferences'} />
       </View>
 
-      <Modal animationType="fade" transparent visible={isEditorVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsEditorVisible(false)} visible={isEditorVisible}>
           <AppCard style={styles.editorCard}>
             <View style={styles.editorHeader}>
               <Text style={styles.editorTitle}>{editingScaleId ? 'Edit custom scale' : 'Create custom scale'}</Text>
@@ -315,64 +399,161 @@ export function ClimbingPreferencesScreen() {
                 value={draftName}
               />
 
-              <Text style={styles.inputLabel}>Add grade</Text>
-              <View style={styles.addRow}>
-                <TextInput
-                  accessibilityLabel="New custom grade"
-                  onChangeText={setDraftGrade}
-                  onSubmitEditing={handleAddDraftGrade}
-                  placeholder="e.g. Red, Hot, Level 4"
-                  placeholderTextColor={colors.muted}
-                  style={[styles.input, styles.addInput]}
-                  value={draftGrade}
-                />
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel="Add custom grade"
-                  accessibilityRole="button"
-                  onPress={handleAddDraftGrade}
-                  style={styles.addButton}
-                >
-                  <Text style={styles.addButtonText}>Add</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                activeOpacity={0.76}
+                accessibilityLabel="Use tape grading system"
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: draftIsTape }}
+                onPress={toggleDraftIsTape}
+                style={[styles.tapeToggle, draftIsTape && styles.selectedChoiceRow]}
+              >
+                <View style={[styles.checkbox, draftIsTape && styles.checkedBox]}>
+                  {draftIsTape ? <Feather name="check" size={14} color={colors.charcoal} /> : null}
+                </View>
+                <View style={styles.choiceCopy}>
+                  <Text style={styles.choiceTitle}>Tape grading system</Text>
+                  <Text style={styles.choiceDetail}>Use hold colours as grade names.</Text>
+                </View>
+              </TouchableOpacity>
+
+              <Text style={styles.inputLabel}>{draftIsTape ? 'Tape colours' : 'Add grade'}</Text>
+              {draftIsTape ? (
+                <View style={styles.tapeColourGrid}>
+                  {climbColours.map((climbColour) => {
+                    const selected = draftGrades.includes(climbColour.label);
+
+                    return (
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Toggle ${climbColour.label} tape grade`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={climbColour.label}
+                        onPress={() => toggleTapeGrade(climbColour.label)}
+                        style={[styles.tapeColourOption, selected && styles.selectedChoiceRow]}
+                      >
+                        <View style={[styles.tapeColourDot, { backgroundColor: climbColour.value }]} />
+                        <Text style={styles.tapeColourText}>{climbColour.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.addRow}>
+                  <TextInput
+                    accessibilityLabel="New custom grade"
+                    onChangeText={setDraftGrade}
+                    onSubmitEditing={handleAddDraftGrade}
+                    placeholder="e.g. Red, Hot, Level 4"
+                    placeholderTextColor={colors.muted}
+                    style={[styles.input, styles.addInput]}
+                    value={draftGrade}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel="Add custom grade"
+                    accessibilityRole="button"
+                    onPress={handleAddDraftGrade}
+                    style={styles.addButton}
+                  >
+                    <Text style={styles.addButtonText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <View style={styles.gradeList}>
                 {draftGrades.map((grade, index) => (
                   <View key={`${grade}-${index}`} style={styles.gradeRow}>
-                    <View style={styles.gradeOrder}>
-                      <Text style={styles.gradeOrderText}>{index + 1}</Text>
+                    <View style={styles.gradeMainRow}>
+                      <View style={styles.gradeOrder}>
+                        <Text style={styles.gradeOrderText}>{index + 1}</Text>
+                      </View>
+                      <View style={styles.gradeNameBlock}>
+                        <View style={styles.gradeNameRow}>
+                          {draftIsTape ? (
+                            <View
+                              style={[
+                                styles.tapeGradeDot,
+                                { backgroundColor: climbColours.find((climbColour) => climbColour.label === grade)?.value ?? colors.stone },
+                              ]}
+                            />
+                          ) : null}
+                          <Text style={styles.gradeName}>{grade}</Text>
+                        </View>
+                        <Text style={styles.gradeRangeText}>Badge value {formatVGradeRange(normalizeVGradeRange(draftVGradeRanges[grade]))}</Text>
+                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Move ${grade} easier`}
+                        accessibilityRole="button"
+                        disabled={index === 0}
+                        onPress={() => setDraftGrades(moveItem(draftGrades, index, index - 1))}
+                        style={[styles.smallAction, index === 0 && styles.disabledSmallAction]}
+                      >
+                        <Text style={styles.smallActionText}>Up</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Move ${grade} harder`}
+                        accessibilityRole="button"
+                        disabled={index === draftGrades.length - 1}
+                        onPress={() => setDraftGrades(moveItem(draftGrades, index, index + 1))}
+                        style={[styles.smallAction, index === draftGrades.length - 1 && styles.disabledSmallAction]}
+                      >
+                        <Text style={styles.smallActionText}>Down</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.gradeName}>{grade}</Text>
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Move ${grade} easier`}
-                      accessibilityRole="button"
-                      disabled={index === 0}
-                      onPress={() => setDraftGrades(moveItem(draftGrades, index, index - 1))}
-                      style={[styles.smallAction, index === 0 && styles.disabledSmallAction]}
-                    >
-                      <Text style={styles.smallActionText}>Up</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Move ${grade} harder`}
-                      accessibilityRole="button"
-                      disabled={index === draftGrades.length - 1}
-                      onPress={() => setDraftGrades(moveItem(draftGrades, index, index + 1))}
-                      style={[styles.smallAction, index === draftGrades.length - 1 && styles.disabledSmallAction]}
-                    >
-                      <Text style={styles.smallActionText}>Down</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Remove ${grade}`}
-                      accessibilityRole="button"
-                      onPress={() => setDraftGrades(draftGrades.filter((_, itemIndex) => itemIndex !== index))}
-                      style={styles.removeAction}
-                    >
-                      <Text style={styles.removeActionText}>Remove</Text>
-                    </TouchableOpacity>
+                    <View style={styles.rangeEditor}>
+                      <Text style={styles.rangeLabel}>From</Text>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Decrease ${grade} lower V grade`}
+                        accessibilityRole="button"
+                        onPress={() => updateDraftVRange(grade, 'min', -1)}
+                        style={styles.smallAction}
+                      >
+                        <Text style={styles.smallActionText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.rangeValue}>{normalizeVGradeRange(draftVGradeRanges[grade]).min}</Text>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Increase ${grade} lower V grade`}
+                        accessibilityRole="button"
+                        onPress={() => updateDraftVRange(grade, 'min', 1)}
+                        style={styles.smallAction}
+                      >
+                        <Text style={styles.smallActionText}>+</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.rangeLabel}>To</Text>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Decrease ${grade} upper V grade`}
+                        accessibilityRole="button"
+                        onPress={() => updateDraftVRange(grade, 'max', -1)}
+                        style={styles.smallAction}
+                      >
+                        <Text style={styles.smallActionText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.rangeValue}>{normalizeVGradeRange(draftVGradeRanges[grade]).max}</Text>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Increase ${grade} upper V grade`}
+                        accessibilityRole="button"
+                        onPress={() => updateDraftVRange(grade, 'max', 1)}
+                        style={styles.smallAction}
+                      >
+                        <Text style={styles.smallActionText}>+</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        accessibilityLabel={`Remove ${grade}`}
+                        accessibilityRole="button"
+                        onPress={() => removeDraftGrade(grade, index)}
+                        style={styles.removeAction}
+                      >
+                        <Text style={styles.removeActionText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -385,8 +566,7 @@ export function ClimbingPreferencesScreen() {
               </View>
             </ScrollView>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
     </ScrollView>
   );
 }
@@ -468,6 +648,20 @@ const styles = StyleSheet.create({
     minWidth: 64,
     textAlign: 'right',
   },
+  checkbox: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  checkedBox: {
+    backgroundColor: colors.amber,
+    borderColor: colors.charcoal,
+  },
   closeButton: {
     alignItems: 'center',
     backgroundColor: colors.surfaceSoft,
@@ -517,7 +711,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   editorCard: {
-    maxHeight: '86%',
+    maxHeight: '100%',
     padding: spacing.lg,
     width: '100%',
   },
@@ -577,12 +771,25 @@ const styles = StyleSheet.create({
   gradeList: {
     gap: spacing.sm,
   },
+  gradeMainRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+  },
   gradeName: {
     color: colors.charcoal,
-    flex: 1,
     fontFamily: fonts.bold,
     fontSize: 15,
     fontWeight: '700',
+  },
+  gradeNameBlock: {
+    flex: 1,
+  },
+  gradeNameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   gradeOrder: {
     alignItems: 'center',
@@ -613,6 +820,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
     fontWeight: '700',
+  },
+  gradeRangeText: {
+    color: colors.muted,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   gradeRow: {
     alignItems: 'center',
@@ -677,6 +891,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  rangeEditor: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    width: '100%',
+  },
+  rangeLabel: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: spacing.xs,
+  },
+  rangeValue: {
+    color: colors.charcoal,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '800',
+    minWidth: 38,
+    textAlign: 'center',
+  },
   savedText: {
     color: colors.success,
     fontFamily: fonts.bold,
@@ -731,6 +967,53 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 12,
     fontWeight: '700',
+  },
+  tapeColourDot: {
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 18,
+    width: 18,
+  },
+  tapeColourGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  tapeColourOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
+  tapeColourText: {
+    color: colors.charcoal,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  tapeGradeDot: {
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 14,
+    width: 14,
+  },
+  tapeToggle: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 64,
+    padding: spacing.md,
   },
   title: {
     ...typography.title,

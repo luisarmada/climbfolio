@@ -1,3 +1,3 @@
-export { getProfileBadgeOption, profileBadgeOptions, profileService } from './profile.service';
+export { profileService } from './profile.service';
+export { formatProfileBadge } from './profileBadge';
 export { useProfileStore } from './profile.store';
-export type { ProfileBadgeOption } from './profile.types';

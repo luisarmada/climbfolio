@@ -1,7 +1,7 @@
 import { attemptRepository, climbRepository, sessionRepository } from '../../data/repositories';
 import { Attempt, Climb, Session } from '../../domain/models';
-import { vScaleGrades } from '../../domain/gradeScales';
-import { warmUpHoldType } from '../climbs';
+import { getGradeVRank, vScaleVGradeRanges } from '../../domain/gradeScales';
+import { normalizeFeature, warmUpHoldType } from '../climbs';
 
 export type SessionSummary = {
   session: Session;
@@ -36,14 +36,16 @@ export type AggregateStats = {
   totalClimbs: number;
 };
 
-function gradeRank(grade: string, gradeOptions = vScaleGrades) {
-  const index = gradeOptions.indexOf(grade);
-  return index === -1 ? -1 : index;
-}
+export type CalendarStats = {
+  highestWeeklyStreak: number;
+  restDaysSinceLastSession: number;
+  sessionDayKeys: Set<string>;
+  weeklyStreak: number;
+};
 
-function highestGrade(climbs: Climb[], gradeOptions = vScaleGrades) {
+function highestGrade(climbs: Climb[], scale = { gradingScaleVGradeRanges: vScaleVGradeRanges }) {
   return climbs.reduce<string | null>((highest, climb) => {
-    if (!highest || gradeRank(climb.grade, gradeOptions) > gradeRank(highest, gradeOptions)) {
+    if (!highest || getGradeVRank(climb.grade, scale) > getGradeVRank(highest, scale)) {
       return climb.grade;
     }
 
@@ -92,7 +94,9 @@ export function summarizeAggregate(summaries: SessionSummary[]): AggregateStats 
     .map((summary) => summary.session.durationSeconds)
     .filter((seconds): seconds is number => seconds != null);
   const colours = climbs.flatMap((climb) => splitColours(climb.colour));
-  const holdTypes = climbs.flatMap((climb) => climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType));
+  const holdTypes = climbs.flatMap((climb) =>
+    climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType).map(normalizeFeature),
+  );
 
   return {
     averageAttemptsPerClimb: climbs.length === 0 ? 0 : totalAttempts / climbs.length,
@@ -132,6 +136,14 @@ function weekKey(date: Date) {
   return startOfWeek(date).toISOString().slice(0, 10);
 }
 
+export function getLocalDayKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 export function calculateWeeklyStreak(summaries: SessionSummary[], date = new Date()) {
   const activeWeeks = new Set(
     summaries
@@ -149,6 +161,55 @@ export function calculateWeeklyStreak(summaries: SessionSummary[], date = new Da
   return streak;
 }
 
+export function calculateHighestWeeklyStreak(summaries: SessionSummary[]) {
+  const activeWeekTimestamps = [
+    ...new Set(
+      summaries
+        .filter((summary) => summary.totalClimbs > 0)
+        .map((summary) => startOfWeek(new Date(summary.session.startTime)).getTime()),
+    ),
+  ].sort((left, right) => left - right);
+  let highest = 0;
+  let current = 0;
+  let previousTimestamp: number | null = null;
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+  activeWeekTimestamps.forEach((timestamp) => {
+    current = previousTimestamp != null && timestamp - previousTimestamp === weekMs ? current + 1 : 1;
+    highest = Math.max(highest, current);
+    previousTimestamp = timestamp;
+  });
+
+  return highest;
+}
+
+export function calculateRestDaysSinceLastSession(summaries: SessionSummary[], date = new Date()) {
+  const latestSessionTime = summaries
+    .map((summary) => new Date(summary.session.startTime).getTime())
+    .sort((left, right) => right - left)[0];
+
+  if (latestSessionTime == null) {
+    return 0;
+  }
+
+  const today = new Date(date);
+  const latestSessionDate = new Date(latestSessionTime);
+
+  today.setHours(0, 0, 0, 0);
+  latestSessionDate.setHours(0, 0, 0, 0);
+
+  return Math.max(0, Math.floor((today.getTime() - latestSessionDate.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+export function getCalendarStats(summaries: SessionSummary[], date = new Date()): CalendarStats {
+  return {
+    highestWeeklyStreak: calculateHighestWeeklyStreak(summaries),
+    restDaysSinceLastSession: calculateRestDaysSinceLastSession(summaries, date),
+    sessionDayKeys: new Set(summaries.map((summary) => getLocalDayKey(new Date(summary.session.startTime)))),
+    weeklyStreak: calculateWeeklyStreak(summaries, date),
+  };
+}
+
 async function summarizeSession(session: Session): Promise<SessionSummary> {
   const climbs = await climbRepository.listBySessionId(session.id);
   const attemptsByClimb = await Promise.all(climbs.map((climb) => attemptRepository.listByClimbId(climb.id)));
@@ -161,7 +222,9 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     .map((climb) => climb.restBeforeClimbSeconds)
     .filter((seconds): seconds is number => seconds != null);
   const colours = climbs.flatMap((climb) => splitColours(climb.colour));
-  const holdTypes = climbs.flatMap((climb) => climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType));
+  const holdTypes = climbs.flatMap((climb) =>
+    climb.holdTypes.filter((holdType) => holdType !== warmUpHoldType).map(normalizeFeature),
+  );
   const totalAttempts = climbs.reduce((total, climb) => total + climb.attemptCount, 0);
 
   return {
@@ -173,8 +236,8 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     averageRestBetweenClimbsSeconds: average(restBetweenClimbs),
     completedClimbs: completed.length,
     completionRate: climbs.length === 0 ? 0 : Math.round((completed.length / climbs.length) * 100),
-    highestGradeAttempted: highestGrade(climbs, session.gradingScaleGrades),
-    highestGradeCompleted: highestGrade(completed, session.gradingScaleGrades),
+    highestGradeAttempted: highestGrade(climbs, session),
+    highestGradeCompleted: highestGrade(completed, session),
     mostCommonColour: mostCommon(colours),
     mostCommonHoldType: mostCommon(holdTypes),
     totalAttempts,
@@ -211,6 +274,11 @@ export const sessionSummaryService = {
   async getWeeklyStreak(date = new Date()): Promise<number> {
     const summaries = await sessionSummaryService.listCompletedSessionSummaries();
     return calculateWeeklyStreak(summaries, date);
+  },
+
+  async getCalendarStats(date = new Date()): Promise<CalendarStats> {
+    const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+    return getCalendarStats(summaries, date);
   },
 };
 
@@ -250,6 +318,13 @@ export function formatSessionDate(value: string) {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+  }).format(new Date(value));
+}
+
+export function formatSessionTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value));
 }
 

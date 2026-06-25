@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
+import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { AppChip } from '../components/AppChip';
 import { HoldIcon } from '../components/HoldIcon';
 import { colors, spacing, typography } from '../design/tokens';
-import { vScaleGrades } from '../domain/gradeScales';
-import { climbColours, holdTypes } from '../features/climbs';
+import { formatEstimatedVGradeAverage, vScaleGrades } from '../domain/gradeScales';
+import { climbColours, featureSections, isCommonFeature } from '../features/climbs';
 import { useActiveSessionStore } from '../features/sessions';
 
 export function StartClimbScreen() {
@@ -20,8 +21,9 @@ export function StartClimbScreen() {
   const startClimb = useActiveSessionStore((state) => state.startClimb);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [selectedColour, setSelectedColour] = useState<string | null>(null);
-  const [selectedHoldType, setSelectedHoldType] = useState<string | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const gradeOptions = activeSession?.gradingScaleGrades.length ? activeSession.gradingScaleGrades : vScaleGrades;
+  const isTapeScale = Boolean(activeSession?.gradingScaleIsTape);
 
   useEffect(() => {
     void restoreActiveSession();
@@ -35,8 +37,8 @@ export function StartClimbScreen() {
     }
   }, [gradeOptions, selectedGrade]);
 
-  function selectHoldType(holdType: string) {
-    setSelectedHoldType((current) => (current === holdType ? null : holdType));
+  function selectFeature(holdType: string) {
+    setSelectedFeature((current) => (current === holdType ? null : holdType));
   }
 
   async function handleStartClimb() {
@@ -47,7 +49,7 @@ export function StartClimbScreen() {
     await startClimb({
       colour: selectedColour,
       grade: selectedGrade,
-      holdTypes: selectedHoldType ? [selectedHoldType] : [],
+      holdTypes: selectedFeature ? [selectedFeature] : [],
     });
     router.replace('/session/active');
   }
@@ -55,7 +57,6 @@ export function StartClimbScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Start Climb</Text>
-      <Text style={styles.subtitle}>Choose the essentials now. Details stay optional.</Text>
 
       {activeClimb ? (
         <AppCard style={styles.notice}>
@@ -76,28 +77,74 @@ export function StartClimbScreen() {
       <AppCard style={styles.section}>
         <Text style={styles.sectionTitle}>Grade</Text>
         <Text style={styles.sectionHint}>{activeSession?.gradingScaleName ?? 'V Scale'}</Text>
-        <View style={styles.chipWrap}>
-          {gradeOptions.map((grade) => (
-            <AppChip key={grade} label={grade} onPress={() => setSelectedGrade(grade)} selected={selectedGrade === grade} />
-          ))}
-        </View>
+        {isTapeScale ? (
+          <View style={styles.tapeGradeGrid}>
+            {gradeOptions.map((grade) => {
+              const selected = selectedGrade === grade;
+
+              return (
+                <TouchableOpacity
+                  activeOpacity={0.76}
+                  accessibilityLabel={`Select ${grade} tape grade`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={grade}
+                  onPress={() => setSelectedGrade(grade)}
+                  style={[styles.tapeGradeOption, selected && styles.selectedTapeGradeOption]}
+                >
+                  <View
+                    style={[
+                      styles.tapeGradeDot,
+                      { backgroundColor: climbColours.find((climbColour) => climbColour.label === grade)?.value ?? colors.stone },
+                    ]}
+                  />
+                  <Text style={styles.tapeGradeOptionText}>{grade}</Text>
+                  <Text style={styles.tapeGradeEstimate}>
+                    Est. {formatEstimatedVGradeAverage(grade, activeSession ?? { gradingScaleVGradeRanges: {} })}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.chipWrap}>
+            {gradeOptions.map((grade) => (
+              <AppChip key={grade} label={grade} onPress={() => setSelectedGrade(grade)} selected={selectedGrade === grade} />
+            ))}
+          </View>
+        )}
       </AppCard>
 
       <AppCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Main hold type</Text>
+        <Text style={styles.sectionTitle}>Main feature</Text>
         <Text style={styles.sectionHint}>Optional, choose one</Text>
-        <View style={styles.chipWrap}>
-          {holdTypes.map((holdType) => (
-            <View key={holdType} style={styles.holdChipWrap}>
-              <HoldIcon colours={selectedColour} holdType={holdType} size={32} />
-              <AppChip label={holdType} onPress={() => selectHoldType(holdType)} selected={selectedHoldType === holdType} />
+        <View style={styles.featureSectionList}>
+          {featureSections.map((section) => (
+            <View key={section.title} style={styles.featureSection}>
+              <Text style={styles.featureSectionTitle}>{section.title}</Text>
+              <View style={styles.chipWrap}>
+                {section.features.map((feature) =>
+                  section.showIcons && selectedColour ? (
+                    <View key={feature} style={styles.holdChipWrap}>
+                      <HoldIcon colours={selectedColour} holdType={feature} size={32} />
+                      <AppChip label={feature} onPress={() => selectFeature(feature)} selected={selectedFeature === feature} />
+                      {isCommonFeature(feature) ? <FontAwesome name="star" size={14} color={colors.amber} /> : null}
+                    </View>
+                  ) : (
+                    <View key={feature} style={styles.featureChipWrap}>
+                      <AppChip label={feature} onPress={() => selectFeature(feature)} selected={selectedFeature === feature} />
+                      {isCommonFeature(feature) ? <FontAwesome name="star" size={14} color={colors.amber} /> : null}
+                    </View>
+                  ),
+                )}
+              </View>
             </View>
           ))}
         </View>
       </AppCard>
 
       <AppCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Colour</Text>
+        <Text style={styles.sectionTitle}>Hold colour</Text>
         <Text style={styles.sectionHint}>Optional, but helpful later</Text>
         <View style={styles.chipWrap}>
           {climbColours.map((climbColour) => (
@@ -135,7 +182,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 40,
+    marginBottom: spacing.xl,
   },
   subtitle: {
     color: colors.muted,
@@ -166,10 +213,68 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  featureSection: {
+    gap: spacing.sm,
+  },
+  featureSectionList: {
+    gap: spacing.lg,
+  },
+  featureSectionTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
   holdChipWrap: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
+  },
+  featureChipWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  selectedTapeGradeOption: {
+    backgroundColor: colors.mint,
+    borderColor: colors.success,
+  },
+  tapeGradeDot: {
+    borderColor: colors.stone,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 22,
+    width: 22,
+  },
+  tapeGradeEstimate: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  tapeGradeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  tapeGradeOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: 16,
+    borderWidth: 1,
+    minHeight: 78,
+    minWidth: 92,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  tapeGradeOptionText: {
+    color: colors.charcoal,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
   actions: {
     gap: spacing.md,

@@ -1,5 +1,5 @@
 import { Svg, Path, Circle } from 'react-native-svg';
-import { climbColours, holdTypes } from '../features/climbs';
+import { climbColours, featureHasIcon, getKnownFeature } from '../features/climbs';
 
 type HoldIconProps = {
   colours?: string[] | string | null;
@@ -15,6 +15,8 @@ type SvgHoldProps = {
 const defaultColour = '#4C8BD9';
 const screwOuter = '#666A67';
 const screwInner = '#B7B9B4';
+const climberFill = '#1E1E1E';
+const climberHighlight = '#FAF7F1';
 
 function getColourValue(label?: string | null) {
   return climbColours.find((colour) => colour.label === label)?.value ?? defaultColour;
@@ -28,15 +30,32 @@ function normalizeColours(colours?: string[] | string | null) {
   return colours?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
+export function getMainFeature(featureValues: string[]) {
+  for (const feature of featureValues) {
+    const knownFeature = getKnownFeature(feature);
+
+    if (knownFeature) {
+      return knownFeature;
+    }
+  }
+
+  return undefined;
+}
+
 export function getMainHoldType(holdTypeValues: string[]) {
-  return holdTypeValues.find((holdType) => holdTypes.includes(holdType));
+  return getMainFeature(holdTypeValues);
 }
 
 export function HoldIcon({ colours, holdType, size = 42 }: HoldIconProps) {
   const selectedColours = normalizeColours(colours);
   const primary = getColourValue(selectedColours[0]);
   const secondary = getColourValue(selectedColours[1] ?? selectedColours[0]);
-  const Icon = holdSvgs[holdType as keyof typeof holdSvgs] ?? JugHoldSvg;
+  const knownFeature = holdType ? getKnownFeature(holdType) : null;
+  const Icon = knownFeature && featureHasIcon(knownFeature) ? holdSvgs[knownFeature as keyof typeof holdSvgs] : null;
+
+  if (!Icon) {
+    return null;
+  }
 
   return (
     <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
@@ -140,12 +159,169 @@ function JibHoldSvg({ primary, secondary }: SvgHoldProps) {
   );
 }
 
+function SidepullHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M18.2 15.5H39.6C47.8 15.5 53.2 21.1 53.2 29.3V35.2C53.2 43.9 47.4 49.6 38.7 49.6H25.4C16.8 49.6 11 43.8 11 35.3C11 26.1 13.9 19.2 18.2 15.5Z" fill={primary} />
+      <Path d="M36.8 15.5H39.6C47.8 15.5 53.2 21.1 53.2 29.3V35.2C53.2 43.9 47.4 49.6 38.7 49.6H33.9C38.1 39.2 39.3 26.4 36.8 15.5Z" fill={secondary} />
+      <Path d="M20.4 22.5C17.2 28.1 16.1 36.1 18.8 43.5" stroke="#FFF" strokeOpacity={0.2} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M31.6 22.6C27.4 29.2 26.9 37.9 30.3 45" stroke="#000" strokeOpacity={0.12} strokeWidth={5.2} strokeLinecap="round" />
+      <Circle cx={37.7} cy={32.5} r={4.05} fill={screwOuter} />
+      <Circle cx={37.7} cy={32.5} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function GastonHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M10.8 34.7C12.5 25.2 20.3 17.7 31.7 15.9L45.6 13.7C50.9 12.9 55.3 17 54.5 22.3L51.8 40.1C51.1 44.7 47.2 48.1 42.4 48.1H23.7C15.2 48.1 9.4 42.7 10.8 34.7Z" fill={primary} />
+      <Path d="M32.8 15.7L45.6 13.7C50.9 12.9 55.3 17 54.5 22.3L51.8 40.1C51.1 44.7 47.2 48.1 42.4 48.1H35.5C39.3 37.9 38.5 25.7 32.8 15.7Z" fill={secondary} />
+      <Path d="M17.8 39.7C25.2 36 34.5 30.1 45.7 21.9" stroke="#FFF" strokeOpacity={0.2} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M23.4 24.8C27.7 28.9 30.2 35.3 30.8 43.5" stroke="#000" strokeOpacity={0.1} strokeWidth={4.6} strokeLinecap="round" />
+      <Circle cx={38.8} cy={31.2} r={4.05} fill={screwOuter} />
+      <Circle cx={38.8} cy={31.2} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function VolumeHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M8.8 42.2L26.6 12.2C28.5 9 33.2 8.9 35.3 12L55.6 42.1C58 45.7 55.4 50.5 51 50.5H13.6C9.4 50.5 6.7 45.8 8.8 42.2Z" fill={primary} />
+      <Path d="M31.9 10.5C33.2 10.6 34.4 11.2 35.3 12L55.6 42.1C58 45.7 55.4 50.5 51 50.5H31.9V10.5Z" fill={secondary} />
+      <Path d="M31.9 12.3V50.1" stroke="#000" strokeOpacity={0.11} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M15 43.8L31.8 15.9L50.6 43.8" stroke="#FFF" strokeOpacity={0.18} strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx={32} cy={35.4} r={4.05} fill={screwOuter} />
+      <Circle cx={32} cy={35.4} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function RailHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M8.8 33.1C9.6 26.7 14.9 22.1 21.4 22.1H49.2C53.4 22.1 56 25.6 54.8 29.7L52.9 36.3C51.7 40.5 47.8 43.3 43.5 43.3H14.6C10.8 43.3 8.3 36.8 8.8 33.1Z" fill={primary} />
+      <Path d="M33.1 22.1H49.2C53.4 22.1 56 25.6 54.8 29.7L52.9 36.3C51.7 40.5 47.8 43.3 43.5 43.3H31.9C34.1 36.6 34.6 29.5 33.1 22.1Z" fill={secondary} />
+      <Path d="M15.5 28.9H49" stroke="#FFF" strokeOpacity={0.22} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M14.1 38C25.2 39 37.6 38.8 50.2 36.9" stroke="#000" strokeOpacity={0.08} strokeWidth={3.2} strokeLinecap="round" />
+      <Circle cx={31.8} cy={32.8} r={4.05} fill={screwOuter} />
+      <Circle cx={31.8} cy={32.8} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function CrackHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M11.7 43.2C12.9 27.2 22.5 15 36.4 15H44C50.2 15 54.5 19.5 54.5 25.6C54.5 39.6 44.7 49.6 30.1 49.6H17.5C13.9 49.6 11.4 46.8 11.7 43.2Z" fill={primary} />
+      <Path d="M35.1 15H44C50.2 15 54.5 19.5 54.5 25.6C54.5 38.6 46.1 48.1 33.3 49.5C37.8 39.2 38.6 26.2 35.1 15Z" fill={secondary} />
+      <Path d="M31.3 16.4C26.8 23.8 28.9 29.4 25.2 35C22.3 39.4 23.6 43.2 20.4 48.2" stroke="#121212" strokeOpacity={0.42} strokeWidth={5.4} strokeLinecap="round" />
+      <Path d="M34 17C30.6 24.4 32.8 30.5 29.1 36.2C26.9 39.5 27.7 43.2 24.8 48" stroke="#FFF" strokeOpacity={0.15} strokeWidth={1.5} strokeLinecap="round" />
+      <Circle cx={40.5} cy={32.4} r={4.05} fill={screwOuter} />
+      <Circle cx={40.5} cy={32.4} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function DualtexHoldSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M12.4 35.8C12.4 23.1 21.5 14.6 34.2 14.6H43.8C50.4 14.6 54.8 19.4 54.8 25.8C54.8 40.3 45.2 49.6 30.8 49.6C19.6 49.6 12.4 44.3 12.4 35.8Z" fill={primary} />
+      <Path d="M34.3 14.6H43.8C50.4 14.6 54.8 19.4 54.8 25.8C54.8 40.3 45.2 49.6 30.8 49.6C29.7 49.6 28.6 49.6 27.6 49.4L34.3 14.6Z" fill={secondary} />
+      <Path d="M34.3 14.6L27.6 49.4" stroke="#121212" strokeOpacity={0.16} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M19.8 25.5C24.6 22.3 30.8 20.9 38.8 21.4" stroke="#FFF" strokeOpacity={0.2} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M39.5 26.7C43.1 25.7 46.5 25.8 50 26.8" stroke="#FFF" strokeOpacity={0.13} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx={37.2} cy={33.4} r={4.05} fill={screwOuter} />
+      <Circle cx={37.2} cy={33.4} r={2} fill={screwInner} />
+    </>
+  );
+}
+
+function SlabFeatureSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M14 56L35 10H50L29 56H14Z" fill={primary} />
+      <Path d="M36 10H50L29 56H21C29 42 34.4 25.8 36 10Z" fill={secondary} />
+      <Path d="M20 50L38 14" stroke="#FFF" strokeOpacity={0.18} strokeWidth={2.1} strokeLinecap="round" />
+      <Path d="M24.5 45.2L30.8 38.2L33 30.1" stroke={climberFill} strokeWidth={4.1} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M31.1 38.5L39 36" stroke={climberFill} strokeWidth={3.4} strokeLinecap="round" />
+      <Path d="M29.9 39L24.2 34.1" stroke={climberFill} strokeWidth={3.4} strokeLinecap="round" />
+      <Path d="M24.6 45L19.2 51.5" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Path d="M25.1 45.1L30.8 52.1" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Circle cx={34.2} cy={25.6} r={4.1} fill={climberFill} />
+      <Circle cx={35.6} cy={24.4} r={1} fill={climberHighlight} fillOpacity={0.45} />
+    </>
+  );
+}
+
+function OverhangFeatureSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M8 16H54L46.4 34.4H13.8L8 16Z" fill={primary} />
+      <Path d="M35.4 16H54L46.4 34.4H32.3C35 28.7 36.1 22.6 35.4 16Z" fill={secondary} />
+      <Path d="M15 21.7C25.2 20.1 36.8 20.4 49.2 22.4" stroke="#FFF" strokeOpacity={0.2} strokeWidth={2.1} strokeLinecap="round" />
+      <Path d="M35.4 33.5L30.1 41L24.5 45.8" stroke={climberFill} strokeWidth={4.2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M30.2 40.7L39 42.7" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Path d="M30.4 40.8L27.1 31.8" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Path d="M24.5 45.6L19 52.2" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Path d="M24.8 45.6L31.3 51.4" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Circle cx={38.7} cy={30.4} r={4} fill={climberFill} />
+      <Circle cx={39.9} cy={29.1} r={1} fill={climberHighlight} fillOpacity={0.45} />
+    </>
+  );
+}
+
+function CaveFeatureSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M9.2 50.5C10.4 30.5 22 13 42 13C51.1 13 56.2 18.3 56.2 25.3C56.2 34.1 48.8 39.7 38.4 39.7H29.8C24.5 39.7 21 43.6 20.3 50.5H9.2Z" fill={primary} />
+      <Path d="M42 13C51.1 13 56.2 18.3 56.2 25.3C56.2 34.1 48.8 39.7 38.4 39.7H34.1C39.7 32.5 43.5 23.5 42 13Z" fill={secondary} />
+      <Path d="M19.2 46.8C23.2 38.4 30.1 34.8 39.8 35.2" stroke="#000" strokeOpacity={0.12} strokeWidth={4} strokeLinecap="round" />
+      <Path d="M18.4 28.4C24.8 19.6 35.8 16.4 47.4 20.1" stroke="#FFF" strokeOpacity={0.18} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M36 35.7L29.6 31L22.5 31.8" stroke={climberFill} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M30 31.3L34 23.8" stroke={climberFill} strokeWidth={3.4} strokeLinecap="round" />
+      <Path d="M30.1 31.4L32.8 40.3" stroke={climberFill} strokeWidth={3.4} strokeLinecap="round" />
+      <Path d="M22.6 31.8L16.4 27.2" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Path d="M22.7 31.8L17.7 39.1" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Circle cx={39.4} cy={38.3} r={4} fill={climberFill} />
+      <Circle cx={40.7} cy={37.3} r={1} fill={climberHighlight} fillOpacity={0.45} />
+    </>
+  );
+}
+
+function DynoFeatureSvg({ primary, secondary }: SvgHoldProps) {
+  return (
+    <>
+      <Path d="M13.4 47.2C14.4 35.2 23.6 27.6 36.7 27.6H47.5C51.8 27.6 54.8 30.5 54.8 34.7C54.8 44.9 46.3 52.2 33.7 52.2C21.2 52.2 12.7 48.9 13.4 47.2Z" fill={primary} fillOpacity={0.92} />
+      <Path d="M36.7 27.6H47.5C51.8 27.6 54.8 30.5 54.8 34.7C54.8 42.5 49.7 48.7 41.1 51.1C42.5 43.7 42.1 35.2 36.7 27.6Z" fill={secondary} fillOpacity={0.95} />
+      <Circle cx={49.2} cy={15.5} r={5.1} fill={secondary} />
+      <Circle cx={49.2} cy={15.5} r={2.1} fill={screwOuter} fillOpacity={0.5} />
+      <Path d="M12.8 20.6C17.7 15.7 24 13.7 31 14.9" stroke={primary} strokeWidth={3.2} strokeLinecap="round" strokeOpacity={0.55} />
+      <Path d="M18.5 26.8C23.2 22.7 29 21.1 35.8 22.4" stroke={primary} strokeWidth={2.5} strokeLinecap="round" strokeOpacity={0.36} />
+      <Path d="M29.1 35.2L35.1 28.5L44.6 20.2" stroke={climberFill} strokeWidth={4.1} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M35.2 28.8L27.4 23.9" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Path d="M35.2 29L39.7 38.5" stroke={climberFill} strokeWidth={3.5} strokeLinecap="round" />
+      <Path d="M29.2 35.1L20.9 38.9" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Path d="M29.2 35.3L25.7 44.1" stroke={climberFill} strokeWidth={3.6} strokeLinecap="round" />
+      <Circle cx={26.6} cy={31.9} r={4} fill={climberFill} />
+      <Circle cx={27.8} cy={30.7} r={1} fill={climberHighlight} fillOpacity={0.45} />
+    </>
+  );
+}
+
 const holdSvgs = {
   Crimp: CrimpHoldSvg,
+  Crack: CrackHoldSvg,
+  Dualtex: DualtexHoldSvg,
+  Gaston: GastonHoldSvg,
   Jib: JibHoldSvg,
   Jug: JugHoldSvg,
   Pinch: PinchHoldSvg,
   Pocket: PocketHoldSvg,
+  Rail: RailHoldSvg,
+  Sidepull: SidepullHoldSvg,
   Sloper: SloperHoldSvg,
-  Undercut: UndercutHoldSvg,
+  Undercling: UndercutHoldSvg,
+  Volume: VolumeHoldSvg,
 } as const;

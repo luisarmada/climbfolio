@@ -1,4 +1,4 @@
-export const schemaVersion = 7;
+export const schemaVersion = 10;
 
 export const createSchemaSql = `
 PRAGMA foreign_keys = ON;
@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   grading_scale_type TEXT NOT NULL DEFAULT 'v_scale',
   grading_scale_name TEXT NOT NULL DEFAULT 'V Scale',
   grading_scale_grades_json TEXT NOT NULL DEFAULT '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+  grading_scale_is_tape INTEGER NOT NULL DEFAULT 0,
+  grading_scale_v_ranges_json TEXT NOT NULL DEFAULT '{}',
+  location_id TEXT,
+  location_name TEXT,
+  location_type TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT
@@ -78,8 +83,22 @@ CREATE TABLE IF NOT EXISTS climbing_preferences (
   deleted_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS climbing_locations (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  grading_scale_id TEXT NOT NULL,
+  is_selected INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_active
   ON sessions(end_time, deleted_at);
+
+CREATE INDEX IF NOT EXISTS idx_locations_selected
+  ON climbing_locations(is_selected, deleted_at);
 
 CREATE INDEX IF NOT EXISTS idx_climbs_session
   ON climbs(session_id, deleted_at);
