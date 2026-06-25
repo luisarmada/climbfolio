@@ -57,7 +57,6 @@ export function StartClimbScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Start Climb</Text>
-      <Text style={styles.subtitle}>Choose the essentials now. Details stay optional.</Text>
 
       {activeClimb ? (
         <AppCard style={styles.notice}>
@@ -183,7 +182,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 40,
+    marginBottom: spacing.xl,
   },
   subtitle: {
     color: colors.muted,

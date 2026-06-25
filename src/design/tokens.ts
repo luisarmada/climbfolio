@@ -45,8 +45,8 @@ export const fonts = {
 export const typography = {
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 44,
-    lineHeight: 48,
+    fontSize: 38,
+    lineHeight: 42,
     fontWeight: '800' as const,
     letterSpacing: 0,
   },

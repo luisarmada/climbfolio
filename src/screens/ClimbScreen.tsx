@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { ClimbingLocationType } from '../domain/models';
 import { builtInGradingScales } from '../domain/gradeScales';
@@ -119,8 +120,7 @@ export function ClimbScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.eyebrow}>Climb</Text>
-      <Text style={styles.title}>Ready to climb?</Text>
+      <Text style={styles.title}>Climb</Text>
 
       <View
         accessibilityLabel="Soft illustration of an indoor climbing gym wall"
@@ -172,8 +172,7 @@ export function ClimbScreen() {
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {locationError ? <Text style={styles.errorText}>{locationError}</Text> : null}
 
-      <Modal animationType="fade" transparent visible={isConfirmVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsConfirmVisible(false)} visible={isConfirmVisible}>
           <AppCard style={styles.modalCard}>
             <Text style={styles.modalTitle}>Start session here?</Text>
             <Text style={styles.modalCopy}>
@@ -200,23 +199,35 @@ export function ClimbScreen() {
               <AppButton icon="x" onPress={() => setIsConfirmVisible(false)} title="Cancel" variant="secondary" />
             </View>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
 
-      <Modal animationType="fade" transparent visible={isLocationPickerVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={closeLocationPicker} visible={isLocationPickerVisible}>
           <AppCard style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Session location</Text>
-              <TouchableOpacity
-                activeOpacity={0.76}
-                accessibilityLabel="Close location picker"
-                accessibilityRole="button"
-                onPress={closeLocationPicker}
-                style={styles.closeButton}
-              >
-                <Feather name="x" size={18} color={colors.charcoal} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity
+                  activeOpacity={0.76}
+                  accessibilityLabel="Edit saved locations"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    closeLocationPicker();
+                    router.push('/settings/locations');
+                  }}
+                  style={styles.closeButton}
+                >
+                  <Feather name="edit-2" size={17} color={colors.charcoal} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.76}
+                  accessibilityLabel="Close location picker"
+                  accessibilityRole="button"
+                  onPress={closeLocationPicker}
+                  style={styles.closeButton}
+                >
+                  <Feather name="x" size={18} color={colors.charcoal} />
+                </TouchableOpacity>
+              </View>
             </View>
             <ScrollView contentContainerStyle={styles.locationPickerContent} showsVerticalScrollIndicator={false}>
               {isCreatingLocation ? (
@@ -333,8 +344,7 @@ export function ClimbScreen() {
               )}
             </ScrollView>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
     </ScrollView>
   );
 }
@@ -454,14 +464,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  eyebrow: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0,
-    marginBottom: 4,
-  },
   hero: {
     borderColor: colors.stone,
     borderRadius: radius.xl,
@@ -555,7 +557,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   modalCard: {
-    maxHeight: '86%',
+    maxHeight: '100%',
     padding: spacing.lg,
     width: '100%',
   },
@@ -572,6 +574,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: spacing.lg,
+  },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   modalOverlay: {
     alignItems: 'center',

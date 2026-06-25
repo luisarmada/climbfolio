@@ -11,6 +11,7 @@ import {
   formatOneDecimal,
   formatOptionalDuration,
   formatSessionDate,
+  formatSessionTime,
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
@@ -96,7 +97,7 @@ export function SessionSummaryScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>{sessionTitle}</Text>
-      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
+      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
 
       <View style={styles.grid}>
         {stats.map((stat) => (
@@ -195,6 +196,5 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 39,
   },
 });

@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactNode } from 'react';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ActiveClimbCard, DoneClimbCard } from '../components/ActiveClimbCard';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { DismissibleModal } from '../components/DismissibleModal';
 import { getMainFeature, HoldIcon } from '../components/HoldIcon';
-import { TimerText } from '../components/TimerText';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { Climb } from '../domain/models';
 import { formatEstimatedVGradeAverage, vScaleGrades } from '../domain/gradeScales';
@@ -126,6 +126,15 @@ function formatClimbGradeLabel(grade: string, isTapeScale: boolean) {
   }
 
   return `${grade} Tape`;
+}
+
+function formatSessionTimer(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
 function QuickClimbGroupCard({
@@ -298,6 +307,7 @@ function TapeGradeLabel({
 export function ActiveSessionScreen() {
   const router = useRouter();
   const [isEndConfirmVisible, setIsEndConfirmVisible] = useState(false);
+  const [isDiscardConfirmVisible, setIsDiscardConfirmVisible] = useState(false);
   const [selectedWarmUpGrade, setSelectedWarmUpGrade] = useState('V0');
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const activeSession = useActiveSessionStore((state) => state.activeSession);
@@ -439,10 +449,11 @@ export function ActiveSessionScreen() {
   }
 
   async function handleDiscardSession() {
+    setIsDiscardConfirmVisible(false);
     setIsLongSessionPromptVisible(false);
     setIsEndConfirmVisible(false);
     await discardSession();
-    router.replace('/');
+    router.replace('/climb');
   }
 
   function handleAddNewClimb() {
@@ -525,6 +536,12 @@ export function ActiveSessionScreen() {
     setExpandedEditFeatureSections(allFeatureSectionTitles);
     setEditTarget(item);
     setEditDraft(createDraftForItem(item));
+  }
+
+  function closeQuickEdit() {
+    setEditOpenFeatureField(null);
+    setEditTarget(null);
+    setEditDraft(null);
   }
 
   function toggleDraftColour(colour: string) {
@@ -760,43 +777,44 @@ export function ActiveSessionScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topRow}>
-        <View>
-          <Text style={styles.title}>Active Session</Text>
-          <Text style={styles.subtitle}>
-            {activeSession ? `Started ${new Date(activeSession.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Focused logging mode'}
-          </Text>
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.76}
+          accessibilityLabel="Return to climb page"
+          accessibilityRole="button"
+          onPress={() => router.push('/climb')}
+          style={styles.returnButton}
+        >
+          <Feather name="chevron-down" size={22} color={colors.charcoal} />
+          <View>
+            <Text style={styles.title}>Active Session</Text>
+            <Text style={styles.subtitle}>Return to Climb</Text>
+          </View>
+        </TouchableOpacity>
         <AppButton
-          accessibilityLabel="Close active session placeholder"
-          icon="x"
-          onPress={() => router.push('/')}
-          style={styles.closeButton}
+          accessibilityLabel="Finish session"
+          disabled={isLoading}
+          icon="flag"
+          onPress={openEndSessionConfirm}
+          style={styles.finishButton}
+          title="Finish"
           variant="secondary"
         />
       </View>
 
-      <AppCard style={styles.timerCard}>
-        <Text style={styles.cardLabel}>Session Time</Text>
-        <TimerText seconds={elapsedSeconds} />
-        <Text style={styles.placeholderCopy}>
-          {activeSession
-            ? 'This timer is calculated from the saved session start time.'
-            : 'No active session is currently saved.'}
-        </Text>
-      </AppCard>
-
-      <View style={styles.statsRow}>
-        <AppCard style={styles.statCard}>
-          <Feather name="triangle" size={22} color={colors.charcoal} />
-          <Text style={styles.statValue}>{totals.climbsLogged}</Text>
+      <AppCard style={styles.compactStatsCard}>
+        <View style={styles.compactStat}>
+          <Text style={styles.statLabel}>Time</Text>
+          <Text style={styles.statValue}>{formatSessionTimer(elapsedSeconds)}</Text>
+        </View>
+        <View style={styles.compactStat}>
           <Text style={styles.statLabel}>Climbs</Text>
-        </AppCard>
-        <AppCard style={styles.statCard}>
-          <Feather name="bar-chart-2" size={22} color={colors.charcoal} />
-          <Text style={styles.statValue}>{totals.attemptsLogged}</Text>
+          <Text style={styles.statValue}>{totals.climbsLogged}</Text>
+        </View>
+        <View style={styles.compactStat}>
           <Text style={styles.statLabel}>Attempts</Text>
-        </AppCard>
-      </View>
+          <Text style={styles.statValue}>{totals.attemptsLogged}</Text>
+        </View>
+      </AppCard>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -925,13 +943,20 @@ export function ActiveSessionScreen() {
 
           {activeClimb ? <Text style={styles.activeHint}>Finish the current climb with Sent It or Give Up before adding another.</Text> : null}
 
-          <AppButton
-            disabled={isLoading}
-            icon="flag"
-            onPress={openEndSessionConfirm}
-            title={isLoading ? 'Ending Session...' : 'End Session'}
-            variant="secondary"
-          />
+          <AppCard style={styles.dangerZoneCard}>
+            <View style={styles.dangerZoneCopy}>
+              <Text style={styles.dangerZoneTitle}>Need to discard?</Text>
+              <Text style={styles.dangerZoneText}>This removes the active session and its unsaved logging from this session.</Text>
+            </View>
+            <AppButton
+              disabled={isLoading}
+              icon="trash-2"
+              onPress={() => setIsDiscardConfirmVisible(true)}
+              style={styles.discardButton}
+              title="Discard session"
+              variant="destructive"
+            />
+          </AppCard>
         </>
       ) : (
         <AppButton
@@ -943,20 +968,15 @@ export function ActiveSessionScreen() {
       )}
 
       {editTarget && editDraft ? (
-        <Modal animationType="fade" transparent visible>
-          <View style={styles.modalOverlay}>
-            <AppCard style={styles.editCard}>
+        <DismissibleModal onDismiss={closeQuickEdit} visible>
+          <AppCard style={styles.editCard}>
               <View style={styles.editHeader}>
                 <Text style={styles.confirmTitle}>Quick edit</Text>
                 <TouchableOpacity
                   activeOpacity={0.76}
                   accessibilityLabel="Close quick edit"
                   accessibilityRole="button"
-                  onPress={() => {
-                    setEditOpenFeatureField(null);
-                    setEditTarget(null);
-                    setEditDraft(null);
-                  }}
+                  onPress={closeQuickEdit}
                   style={styles.editCloseButton}
                 >
                   <Feather name="x" size={18} color={colors.charcoal} />
@@ -1145,14 +1165,12 @@ export function ActiveSessionScreen() {
                 />
               </ScrollView>
             </AppCard>
-          </View>
-        </Modal>
+        </DismissibleModal>
       ) : null}
 
       {editTarget && editDraft && editOpenFeatureField ? (
-        <Modal animationType="fade" transparent visible>
-          <View style={styles.modalOverlay}>
-            <AppCard style={styles.editCard}>
+        <DismissibleModal onDismiss={() => setEditOpenFeatureField(null)} visible>
+          <AppCard style={styles.editCard}>
               <View style={styles.editHeader}>
                 <View>
                   <Text style={styles.confirmTitle}>
@@ -1205,12 +1223,10 @@ export function ActiveSessionScreen() {
               </ScrollView>
               <AppButton icon="check" onPress={() => setEditOpenFeatureField(null)} title="Done" />
             </AppCard>
-          </View>
-        </Modal>
+        </DismissibleModal>
       ) : null}
 
-      <Modal animationType="fade" transparent visible={isNewClimbPickerVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsNewClimbPickerVisible(false)} visible={isNewClimbPickerVisible}>
           <AppCard style={styles.editCard}>
             <View style={styles.editHeader}>
               <Text style={styles.confirmTitle}>Add new climb</Text>
@@ -1331,11 +1347,9 @@ export function ActiveSessionScreen() {
               </View>
             </ScrollView>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
 
-      <Modal animationType="fade" transparent visible={isEndConfirmVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsEndConfirmVisible(false)} visible={isEndConfirmVisible}>
           <AppCard style={styles.confirmCard}>
             <Text style={styles.confirmTitle}>{activeClimb ? 'End with active climb?' : 'End session?'}</Text>
             <Text style={styles.confirmCopy}>
@@ -1407,11 +1421,9 @@ export function ActiveSessionScreen() {
               />
             </View>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
 
-      <Modal animationType="fade" transparent visible={isLongSessionPromptVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsLongSessionPromptVisible(false)} visible={isLongSessionPromptVisible}>
           <AppCard style={styles.confirmCard}>
             <Text style={styles.confirmTitle}>Continue old session?</Text>
             <Text style={styles.confirmCopy}>
@@ -1443,8 +1455,32 @@ export function ActiveSessionScreen() {
               />
             </View>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
+
+      <DismissibleModal onDismiss={() => setIsDiscardConfirmVisible(false)} visible={isDiscardConfirmVisible}>
+          <AppCard style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Discard session?</Text>
+            <Text style={styles.confirmCopy}>
+              This will delete the current active session and return you to the Climb page. This cannot be undone.
+            </Text>
+            <View style={styles.confirmActions}>
+              <AppButton
+                disabled={isLoading}
+                icon="trash-2"
+                onPress={() => void handleDiscardSession()}
+                title="Discard Session"
+                variant="destructive"
+              />
+              <AppButton
+                disabled={isLoading}
+                icon="x"
+                onPress={() => setIsDiscardConfirmVisible(false)}
+                title="Cancel"
+                variant="secondary"
+              />
+            </View>
+          </AppCard>
+      </DismissibleModal>
     </ScrollView>
   );
 }
@@ -1452,26 +1488,34 @@ export function ActiveSessionScreen() {
 const styles = StyleSheet.create({
   content: {
     gap: spacing.lg,
-    paddingBottom: 132,
+    paddingBottom: spacing.xxl,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
   topRow: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  returnButton: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   title: {
     ...typography.h2,
     color: colors.charcoal,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 24,
+    lineHeight: 29,
   },
   subtitle: {
     color: colors.muted,
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: spacing.xs,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 1,
+    textTransform: 'uppercase',
   },
   textInput: {
     backgroundColor: colors.surfaceSoft,
@@ -1485,21 +1529,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  closeButton: {
-    borderRadius: radius.pill,
-    minHeight: 44,
-    paddingHorizontal: 0,
-    width: 44,
-  },
-  timerCard: {
-    padding: spacing.xxl,
-  },
-  cardLabel: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: spacing.sm,
-    textTransform: 'uppercase',
+  finishButton: {
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
   },
   activeHint: {
     color: colors.muted,
@@ -1528,12 +1560,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
     textAlign: 'center',
-  },
-  placeholderCopy: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: spacing.md,
   },
   timelineDivider: {
     backgroundColor: colors.stone,
@@ -1738,6 +1764,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  compactStatsCard: {
+    backgroundColor: 'rgba(255,253,248,0.68)',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  compactStat: {
+    flex: 1,
+  },
+  dangerZoneCard: {
+    backgroundColor: 'rgba(255,150,102,0.08)',
+    borderColor: 'rgba(184,90,59,0.26)',
+    gap: spacing.md,
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+  },
+  dangerZoneCopy: {
+    gap: spacing.xs,
+  },
+  dangerZoneText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  dangerZoneTitle: {
+    color: destructiveRed,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  discardButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
   statsRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -1749,13 +1811,15 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: colors.charcoal,
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '900',
+    marginBottom: 2,
+    textTransform: 'uppercase',
   },
   modalOverlay: {
     alignItems: 'center',
@@ -1765,6 +1829,7 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
   },
   confirmCard: {
+    maxHeight: '100%',
     maxWidth: 420,
     padding: spacing.xl,
     width: '100%',
@@ -1818,7 +1883,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   editCard: {
-    maxHeight: '84%',
+    maxHeight: '100%',
     maxWidth: 460,
     padding: spacing.lg,
     width: '100%',

@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatOneDecimal,
   formatSessionDate,
+  formatSessionTime,
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
@@ -77,7 +78,7 @@ export function SessionDetailScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>{sessionTitle}</Text>
-      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}</Text>
+      <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
 
       <AppCard style={styles.summaryCard}>
         <Text style={styles.cardTitle}>Saved Session</Text>
@@ -271,6 +272,5 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 39,
   },
 });

@@ -1,6 +1,6 @@
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import {
   buildFeatureSelection,
   climbColours,
@@ -18,6 +18,7 @@ import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { AppButton } from './AppButton';
 import { AppCard } from './AppCard';
+import { DismissibleModal } from './DismissibleModal';
 import { getMainFeature, HoldIcon } from './HoldIcon';
 import { TimerText } from './TimerText';
 
@@ -368,8 +369,7 @@ export function ActiveClimbCard({
         />
       </View>
 
-      <Modal animationType="fade" transparent visible={Boolean(openField)}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setOpenField(null)} visible={Boolean(openField)}>
           <AppCard style={styles.dropdownCard}>
             <View style={styles.dropdownHeader}>
               <View>
@@ -417,11 +417,9 @@ export function ActiveClimbCard({
             </ScrollView>
             <AppButton icon="check" onPress={() => setOpenField(null)} title="Done" />
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
 
-      <Modal animationType="fade" transparent visible={isDetailsEditorVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsDetailsEditorVisible(false)} visible={isDetailsEditorVisible}>
           <AppCard style={styles.dropdownCard}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>Climb details</Text>
@@ -504,8 +502,7 @@ export function ActiveClimbCard({
             </ScrollView>
             <AppButton disabled={disabled || !canSaveDetails} icon="check" onPress={saveDetailsEditor} title="Save Details" />
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
     </AppCard>
   );
 }
@@ -769,7 +766,7 @@ const styles = StyleSheet.create({
     width: 16,
   },
   dropdownCard: {
-    maxHeight: '72%',
+    maxHeight: '100%',
     maxWidth: 420,
     padding: spacing.lg,
     width: '100%',

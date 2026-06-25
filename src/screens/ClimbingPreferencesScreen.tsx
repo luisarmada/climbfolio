@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import {
   CustomGradingScale,
@@ -251,7 +252,6 @@ export function ClimbingPreferencesScreen() {
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
         </TouchableOpacity>
         <View style={styles.titleBlock}>
-          <Text style={styles.eyebrow}>Settings</Text>
           <Text style={styles.title}>Grade scales</Text>
         </View>
       </View>
@@ -374,8 +374,7 @@ export function ClimbingPreferencesScreen() {
         <AppButton disabled={isLoading} onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Preferences'} />
       </View>
 
-      <Modal animationType="fade" transparent visible={isEditorVisible}>
-        <View style={styles.modalOverlay}>
+      <DismissibleModal onDismiss={() => setIsEditorVisible(false)} visible={isEditorVisible}>
           <AppCard style={styles.editorCard}>
             <View style={styles.editorHeader}>
               <Text style={styles.editorTitle}>{editingScaleId ? 'Edit custom scale' : 'Create custom scale'}</Text>
@@ -567,8 +566,7 @@ export function ClimbingPreferencesScreen() {
               </View>
             </ScrollView>
           </AppCard>
-        </View>
-      </Modal>
+      </DismissibleModal>
     </ScrollView>
   );
 }
@@ -713,7 +711,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   editorCard: {
-    maxHeight: '86%',
+    maxHeight: '100%',
     padding: spacing.lg,
     width: '100%',
   },

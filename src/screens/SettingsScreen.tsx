@@ -8,7 +8,6 @@ type SettingsRow = {
   detail: string;
   href?: Href;
   label: string;
-  status?: string;
 };
 
 type SettingsSection = {
@@ -24,7 +23,6 @@ const settingsSections: SettingsSection[] = [
         detail: 'Display name and climber type',
         href: '/settings/profile',
         label: 'Profile',
-        status: 'Ready',
       },
       { detail: 'Username, email, and password', label: 'Account' },
       { detail: 'Push, email, and activity alerts', label: 'Notifications' },
@@ -37,13 +35,11 @@ const settingsSections: SettingsSection[] = [
         detail: 'Built-in, custom, and tape grading systems',
         href: '/settings/climbing',
         label: 'Grade scales',
-        status: 'Ready',
       },
       {
         detail: 'Places, location type, and grade scale mapping',
         href: '/settings/locations',
         label: 'Locations',
-        status: 'Ready',
       },
       { detail: 'Profile visibility, followers, and sharing controls', label: 'Privacy and social' },
       { detail: 'Move session data in or out of Climb Book', label: 'Export / import data' },
@@ -69,7 +65,6 @@ export function SettingsScreen() {
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
         </TouchableOpacity>
         <View style={styles.titleBlock}>
-          <Text style={styles.eyebrow}>Profile</Text>
           <Text style={styles.title}>Settings</Text>
         </View>
       </View>
@@ -91,9 +86,11 @@ export function SettingsScreen() {
                   <Text style={styles.rowLabel}>{row.label}</Text>
                   <Text style={styles.rowDetail}>{row.detail}</Text>
                 </View>
-                <View style={styles.statusPill}>
-                  <Text style={styles.statusText}>{row.status ?? 'Coming soon'}</Text>
-                </View>
+                {row.href ? null : (
+                  <View style={styles.statusPill}>
+                    <Text style={styles.statusText}>Coming soon</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </AppCard>

@@ -3,7 +3,7 @@ import { ActiveSessionScreen } from '../../src/screens/ActiveSessionScreen';
 
 export default function ActiveSessionRoute() {
   return (
-    <AppShell>
+    <AppShell showBottomNav={false}>
       <ActiveSessionScreen />
     </AppShell>
   );
