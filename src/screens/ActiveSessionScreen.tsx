@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactNode } from 'react';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { ActiveClimbCard, DoneClimbCard } from '../components/ActiveClimbCard';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { getMainFeature, HoldIcon } from '../components/HoldIcon';
+import { SessionDiscardSection } from '../components/SessionDiscardSection';
+import { SessionLiveStatsRow } from '../components/SessionLiveStatsRow';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { Climb } from '../domain/models';
 import { formatEstimatedVGradeAverage, vScaleGrades } from '../domain/gradeScales';
@@ -22,7 +24,7 @@ import {
   maxAdditionalFeatures,
   warmUpHoldType,
 } from '../features/climbs';
-import { getDefaultSessionName, useActiveSessionStore } from '../features/sessions';
+import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 
 const destructiveRed = '#B85A3B';
@@ -31,7 +33,6 @@ const allFeatureSectionTitles = featureSections.map((section) => section.title);
 
 type EditTarget = TimelineItem | null;
 type EditFeatureField = 'mainFeature' | 'additionalFeatures';
-type EndSessionMode = 'default' | 'sent' | 'incomplete' | 'discard';
 
 type EditDraft = {
   attemptCount: number;
@@ -46,11 +47,6 @@ type EditDraft = {
 type NewClimbDraft = {
   colours: string[];
   grade: string;
-};
-
-type SessionFinalizationDraft = {
-  description: string;
-  name: string;
 };
 
 type TimelineItem =
@@ -126,15 +122,6 @@ function formatClimbGradeLabel(grade: string, isTapeScale: boolean) {
   }
 
   return `${grade} Tape`;
-}
-
-function formatSessionTimer(totalSeconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const seconds = safeSeconds % 60;
-
-  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
 function QuickClimbGroupCard({
@@ -306,17 +293,16 @@ function TapeGradeLabel({
 
 export function ActiveSessionScreen() {
   const router = useRouter();
-  const [isEndConfirmVisible, setIsEndConfirmVisible] = useState(false);
-  const [isDiscardConfirmVisible, setIsDiscardConfirmVisible] = useState(false);
+  const { height } = useWindowDimensions();
+  const screenProgress = useRef(new Animated.Value(1)).current;
+  const isClosingActiveSessionRef = useRef(false);
   const [selectedWarmUpGrade, setSelectedWarmUpGrade] = useState('V0');
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const activeSession = useActiveSessionStore((state) => state.activeSession);
   const addAttempt = useActiveSessionStore((state) => state.addAttempt);
   const climbs = useActiveSessionStore((state) => state.climbs);
   const deleteClimb = useActiveSessionStore((state) => state.deleteClimb);
-  const discardActiveClimb = useActiveSessionStore((state) => state.discardActiveClimb);
   const discardSession = useActiveSessionStore((state) => state.discardSession);
-  const endSession = useActiveSessionStore((state) => state.endSession);
   const error = useActiveSessionStore((state) => state.error);
   const finishActiveClimb = useActiveSessionStore((state) => state.finishActiveClimb);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
@@ -331,22 +317,20 @@ export function ActiveSessionScreen() {
   const updateLoggedClimb = useActiveSessionStore((state) => state.updateLoggedClimb);
   const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
   const timelineItems = getTimelineItems(climbs);
+  const hasLoggedTimelineClimbs = timelineItems.length > 0;
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [celebratingClimbId, setCelebratingClimbId] = useState<string | null>(null);
+  const [finishPrompt, setFinishPrompt] = useState<string | null>(null);
   const [mainFeatureRequiredSignal, setMainFeatureRequiredSignal] = useState(0);
   const [longSessionPromptId, setLongSessionPromptId] = useState<string | null>(null);
   const [isLongSessionPromptVisible, setIsLongSessionPromptVisible] = useState(false);
+  const [hasActiveSessionRestoreSettled, setHasActiveSessionRestoreSettled] = useState(false);
   const [isNewClimbPickerVisible, setIsNewClimbPickerVisible] = useState(false);
   const [newClimbDraft, setNewClimbDraft] = useState<NewClimbDraft>({ colours: [], grade: 'V0' });
   const [editOpenFeatureField, setEditOpenFeatureField] = useState<EditFeatureField | null>(null);
   const [editFeatureSearch, setEditFeatureSearch] = useState('');
   const [expandedEditFeatureSections, setExpandedEditFeatureSections] = useState<string[]>(allFeatureSectionTitles);
-  const [sessionFinalizationDraft, setSessionFinalizationDraft] = useState<SessionFinalizationDraft>({
-    description: '',
-    name: '',
-  });
-  const [defaultSessionNamePreview, setDefaultSessionNamePreview] = useState(getDefaultSessionName());
   const sessionGradeOptions = useMemo(
     () => (activeSession?.gradingScaleGrades.length ? activeSession.gradingScaleGrades : vScaleGrades),
     [activeSession?.gradingScaleGrades],
@@ -359,11 +343,32 @@ export function ActiveSessionScreen() {
   const editMainFeature = editDraft ? getMainFeature(editDraft.holdTypes) : undefined;
   const editAdditionalFeatures = editDraft ? getAdditionalFeatures(editDraft.holdTypes) : [];
   const editAdditionalFeatureLabel = editMainFeature ? formatFeatureDisplay(editAdditionalFeatures) : 'Choose main first';
-  const activeClimbMainFeature = activeClimb ? getMainFeature(activeClimb.holdTypes.filter((holdType) => holdType !== warmUpHoldType)) : undefined;
-  const canSaveActiveClimbResult = Boolean(activeClimbMainFeature);
+  const activeSessionId = activeSession?.id ?? null;
 
   useEffect(() => {
-    void restoreActiveSession();
+    screenProgress.setValue(1);
+    Animated.timing(screenProgress, {
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [screenProgress]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    setHasActiveSessionRestoreSettled(false);
+
+    void restoreActiveSession().finally(() => {
+      if (isMounted) {
+        setHasActiveSessionRestoreSettled(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [restoreActiveSession]);
 
   useEffect(() => {
@@ -386,16 +391,22 @@ export function ActiveSessionScreen() {
     const firstGrade = sessionGradeOptions[0] ?? 'V0';
     setSelectedWarmUpGrade(firstGrade);
     setNewClimbDraft((draft) => ({ ...draft, grade: firstGrade }));
-  }, [activeSession?.id]);
+  }, [activeSessionId]);
 
   useEffect(() => {
-    if (!activeSession || longSessionPromptId === activeSession.id || elapsedSeconds < longSessionThresholdSeconds) {
+    if (
+      !hasActiveSessionRestoreSettled ||
+      isLoading ||
+      !activeSessionId ||
+      longSessionPromptId === activeSessionId ||
+      elapsedSeconds < longSessionThresholdSeconds
+    ) {
       return;
     }
 
-    setLongSessionPromptId(activeSession.id);
+    setLongSessionPromptId(activeSessionId);
     setIsLongSessionPromptVisible(true);
-  }, [activeSession, elapsedSeconds, longSessionPromptId]);
+  }, [activeSessionId, elapsedSeconds, hasActiveSessionRestoreSettled, isLoading, longSessionPromptId]);
 
   useEffect(() => {
     if (!celebratingClimbId) {
@@ -406,52 +417,54 @@ export function ActiveSessionScreen() {
     return () => clearTimeout(timeoutId);
   }, [celebratingClimbId]);
 
+  useEffect(() => {
+    if (!activeClimb && hasLoggedTimelineClimbs) {
+      setFinishPrompt(null);
+    }
+  }, [activeClimb, hasLoggedTimelineClimbs]);
+
   async function handleStartSession() {
     await startSession();
   }
 
-  function openEndSessionConfirm() {
-    setSessionFinalizationDraft({
-      description: activeSession?.description ?? '',
-      name: activeSession?.name ?? '',
-    });
-    setDefaultSessionNamePreview(getDefaultSessionName());
-    setIsEndConfirmVisible(true);
-  }
-
-  async function handleEndSession(mode: EndSessionMode = 'default') {
-    if ((mode === 'sent' || mode === 'incomplete') && activeClimb && !canSaveActiveClimbResult) {
-      setIsEndConfirmVisible(false);
-      setMainFeatureRequiredSignal((signal) => signal + 1);
+  function openFinishSession() {
+    if (activeClimb) {
+      setFinishPrompt('Finish the current climb first.');
       return;
     }
 
-    setIsEndConfirmVisible(false);
-    setIsLongSessionPromptVisible(false);
-
-    if (mode === 'sent') {
-      await finishActiveClimb(true);
+    if (!hasLoggedTimelineClimbs) {
+      setFinishPrompt('Add a climb first.');
+      return;
     }
 
-    if (mode === 'incomplete') {
-      await finishActiveClimb(false);
+    router.push('/session/finish');
+  }
+
+  function closeActiveSession() {
+    if (isClosingActiveSessionRef.current) {
+      return;
     }
 
-    if (mode === 'discard') {
-      await discardActiveClimb();
-    }
+    isClosingActiveSessionRef.current = true;
 
-    const endedSession = await endSession(sessionFinalizationDraft);
+    Animated.timing(screenProgress, {
+      duration: 260,
+      easing: Easing.in(Easing.cubic),
+      toValue: 1,
+      useNativeDriver: true,
+    }).start(() => {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
 
-    if (endedSession) {
-      router.replace({ pathname: '/session/summary', params: { sessionId: endedSession.id } });
-    }
+      router.replace('/climb');
+    });
   }
 
   async function handleDiscardSession() {
-    setIsDiscardConfirmVisible(false);
     setIsLongSessionPromptVisible(false);
-    setIsEndConfirmVisible(false);
     await discardSession();
     router.replace('/climb');
   }
@@ -774,49 +787,42 @@ export function ActiveSessionScreen() {
     void reorderTimeline(flattenTimelineItemIds(reorderedItems));
   }
 
+  const screenTranslateY = screenProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, height],
+  });
+
   return (
+    <Animated.View style={[styles.screen, { transform: [{ translateY: screenTranslateY }] }]}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topRow}>
         <TouchableOpacity
           activeOpacity={0.76}
           accessibilityLabel="Return to climb page"
           accessibilityRole="button"
-          onPress={() => router.push('/climb')}
+          onPress={closeActiveSession}
           style={styles.returnButton}
         >
           <Feather name="chevron-down" size={22} color={colors.charcoal} />
           <View>
             <Text style={styles.title}>Active Session</Text>
-            <Text style={styles.subtitle}>Return to Climb</Text>
           </View>
         </TouchableOpacity>
         <AppButton
           accessibilityLabel="Finish session"
           disabled={isLoading}
           icon="flag"
-          onPress={openEndSessionConfirm}
-          style={styles.finishButton}
+          onPress={openFinishSession}
+          style={[styles.finishButton, styles.finishActionButton]}
           title="Finish"
           variant="secondary"
         />
       </View>
 
-      <AppCard style={styles.compactStatsCard}>
-        <View style={styles.compactStat}>
-          <Text style={styles.statLabel}>Time</Text>
-          <Text style={styles.statValue}>{formatSessionTimer(elapsedSeconds)}</Text>
-        </View>
-        <View style={styles.compactStat}>
-          <Text style={styles.statLabel}>Climbs</Text>
-          <Text style={styles.statValue}>{totals.climbsLogged}</Text>
-        </View>
-        <View style={styles.compactStat}>
-          <Text style={styles.statLabel}>Attempts</Text>
-          <Text style={styles.statValue}>{totals.attemptsLogged}</Text>
-        </View>
-      </AppCard>
+      <SessionLiveStatsRow attempts={totals.attemptsLogged} climbs={totals.climbsLogged} elapsedSeconds={elapsedSeconds} />
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {finishPrompt ? <Text style={styles.errorText}>{finishPrompt}</Text> : null}
 
       {activeSession ? (
         <>
@@ -880,7 +886,7 @@ export function ActiveSessionScreen() {
               mainFeatureRequiredSignal={mainFeatureRequiredSignal}
               onAddAttempt={() => void addAttempt()}
               onDelete={() => void deleteClimb(activeClimb.id)}
-              onGiveUp={() => void finishActiveClimb(false)}
+              onAnotherTime={() => void finishActiveClimb(false)}
               onSentIt={() => void handleSentIt()}
               onUndoAttempt={() => void undoAttempt()}
               onUpdate={(input) => void updateActiveClimb(input)}
@@ -889,74 +895,72 @@ export function ActiveSessionScreen() {
 
           {!activeClimb ? (
             <>
-              <AppCard style={styles.quickAddCard}>
-                <Text style={styles.sectionTitle}>Quick Climb</Text>
-                <Text style={styles.sectionHint}>{activeSession?.gradingScaleName ?? 'V Scale'}</Text>
-                <View style={styles.quickAddRow}>
-                  <View style={styles.quickStepper}>
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel="Decrease quick climb grade"
-                      accessibilityRole="button"
-                      disabled={selectedQuickGradeIndex === 0}
-                      onPress={decrementQuickGrade}
-                      style={[
-                        styles.stepperButton,
-                        styles.decrementStepperButton,
-                        selectedQuickGradeIndex === 0 && styles.disabledStepperButton,
-                      ]}
-                    >
-                      <Feather name="minus" size={18} color={destructiveRed} />
-                    </TouchableOpacity>
-                    <TapeGradeLabel grade={selectedWarmUpGrade} isTape={sessionIsTapeScale} scale={activeSession ?? undefined} />
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel="Increase quick climb grade"
-                      accessibilityRole="button"
-                      disabled={selectedQuickGradeIndex === sessionGradeOptions.length - 1}
-                      onPress={incrementQuickGrade}
-                      style={[
-                        styles.stepperButton,
-                        selectedQuickGradeIndex === sessionGradeOptions.length - 1 && styles.disabledStepperButton,
-                      ]}
-                    >
-                      <Feather name="plus" size={18} color={colors.charcoal} />
-                    </TouchableOpacity>
-                  </View>
-                  <AppButton
-                    disabled={isLoading}
-                    icon="zap"
-                    onPress={handleQuickAddWarmUp}
-                    style={styles.quickAddButton}
-                    title="Quick +"
-                  />
+              <View style={styles.quickAddRow}>
+                <View style={styles.quickStepper}>
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel="Decrease quick climb grade"
+                    accessibilityRole="button"
+                    disabled={selectedQuickGradeIndex === 0}
+                    onPress={decrementQuickGrade}
+                    style={[
+                      styles.stepperButton,
+                      styles.decrementStepperButton,
+                      selectedQuickGradeIndex === 0 && styles.disabledStepperButton,
+                    ]}
+                  >
+                    <Feather name="minus" size={18} color={destructiveRed} />
+                  </TouchableOpacity>
+                  <TapeGradeLabel grade={selectedWarmUpGrade} isTape={sessionIsTapeScale} scale={activeSession ?? undefined} />
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel="Increase quick climb grade"
+                    accessibilityRole="button"
+                    disabled={selectedQuickGradeIndex === sessionGradeOptions.length - 1}
+                    onPress={incrementQuickGrade}
+                    style={[
+                      styles.stepperButton,
+                      selectedQuickGradeIndex === sessionGradeOptions.length - 1 && styles.disabledStepperButton,
+                    ]}
+                  >
+                    <Feather name="plus" size={18} color={colors.charcoal} />
+                  </TouchableOpacity>
                 </View>
-              </AppCard>
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  accessibilityLabel="Quick add climb"
+                  accessibilityRole="button"
+                  disabled={isLoading}
+                  onPress={handleQuickAddWarmUp}
+                  style={[styles.quickAddButton, isLoading && styles.disabledControl]}
+                >
+                  <Feather name="plus" size={18} color={colors.white} />
+                  <Feather name="zap" size={16} color={colors.white} />
+                  <Text style={styles.quickAddButtonText}>Quick Add</Text>
+                </TouchableOpacity>
+              </View>
               <AppButton
                 disabled={isLoading}
                 icon="plus"
                 onPress={handleAddNewClimb}
                 title="Add New Climb"
               />
+              <View style={styles.secondaryControlRow}>
+                <AppButton
+                  disabled={isLoading}
+                  icon="settings"
+                  onPress={() => undefined}
+                  style={styles.secondaryControlButton}
+                  title="Settings"
+                  variant="secondary"
+                />
+                <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.secondaryControlButton} />
+              </View>
             </>
           ) : null}
 
-          {activeClimb ? <Text style={styles.activeHint}>Finish the current climb with Sent It or Give Up before adding another.</Text> : null}
-
-          <AppCard style={styles.dangerZoneCard}>
-            <View style={styles.dangerZoneCopy}>
-              <Text style={styles.dangerZoneTitle}>Need to discard?</Text>
-              <Text style={styles.dangerZoneText}>This removes the active session and its unsaved logging from this session.</Text>
-            </View>
-            <AppButton
-              disabled={isLoading}
-              icon="trash-2"
-              onPress={() => setIsDiscardConfirmVisible(true)}
-              style={styles.discardButton}
-              title="Discard session"
-              variant="destructive"
-            />
-          </AppCard>
+          {activeClimb ? <Text style={styles.activeHint}>Finish the current climb with Sent It or Another Time before adding another.</Text> : null}
+          {activeClimb ? <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.discardButton} /> : null}
         </>
       ) : (
         <AppButton
@@ -1349,80 +1353,6 @@ export function ActiveSessionScreen() {
           </AppCard>
       </DismissibleModal>
 
-      <DismissibleModal onDismiss={() => setIsEndConfirmVisible(false)} visible={isEndConfirmVisible}>
-          <AppCard style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>{activeClimb ? 'End with active climb?' : 'End session?'}</Text>
-            <Text style={styles.confirmCopy}>
-              {activeClimb
-                ? 'Choose how to save the climb you are currently logging before the session ends.'
-                : 'This will stop the timer and save this session.'}
-            </Text>
-            <View style={styles.finalizationSection}>
-              <Text style={styles.finalizationTitle}>Finalise session</Text>
-              <Text style={styles.finalizationHint}>Leave the name blank to use {defaultSessionNamePreview}.</Text>
-              <TextInput
-                accessibilityLabel="Session name"
-                onChangeText={(name) => setSessionFinalizationDraft((draft) => ({ ...draft, name }))}
-                placeholder="Session name"
-                placeholderTextColor={colors.muted}
-                style={styles.textInput}
-                value={sessionFinalizationDraft.name}
-              />
-              <TextInput
-                accessibilityLabel="Session description"
-                multiline
-                onChangeText={(description) => setSessionFinalizationDraft((draft) => ({ ...draft, description }))}
-                placeholder="Description"
-                placeholderTextColor={colors.muted}
-                style={[styles.textInput, styles.descriptionInput]}
-                textAlignVertical="top"
-                value={sessionFinalizationDraft.description}
-              />
-            </View>
-            <View style={styles.confirmActions}>
-              {activeClimb ? (
-                <>
-                  <AppButton
-                    disabled={isLoading}
-                    icon="check-circle"
-                    onPress={() => void handleEndSession('sent')}
-                    title={isLoading ? 'Ending Session...' : 'Sent It + End'}
-                  />
-                  <AppButton
-                    disabled={isLoading}
-                    icon="x-circle"
-                    onPress={() => void handleEndSession('incomplete')}
-                    title="Give Up + End"
-                    variant="secondary"
-                  />
-                  <AppButton
-                    disabled={isLoading}
-                    icon="trash-2"
-                    onPress={() => void handleEndSession('discard')}
-                    title="Discard Climb + End"
-                    variant="destructive"
-                  />
-                </>
-              ) : (
-                <AppButton
-                  disabled={isLoading}
-                  icon="flag"
-                  onPress={() => void handleEndSession()}
-                  title={isLoading ? 'Ending Session...' : 'End Session'}
-                  variant="destructive"
-                />
-              )}
-              <AppButton
-                disabled={isLoading}
-                icon="x"
-                onPress={() => setIsEndConfirmVisible(false)}
-                title="Cancel"
-                variant="secondary"
-              />
-            </View>
-          </AppCard>
-      </DismissibleModal>
-
       <DismissibleModal onDismiss={() => setIsLongSessionPromptVisible(false)} visible={isLongSessionPromptVisible}>
           <AppCard style={styles.confirmCard}>
             <Text style={styles.confirmTitle}>Continue old session?</Text>
@@ -1431,7 +1361,6 @@ export function ActiveSessionScreen() {
             </Text>
             <View style={styles.confirmActions}>
               <AppButton
-                disabled={isLoading}
                 icon="play"
                 onPress={() => setIsLongSessionPromptVisible(false)}
                 title="Continue"
@@ -1441,7 +1370,7 @@ export function ActiveSessionScreen() {
                 icon="flag"
                 onPress={() => {
                   setIsLongSessionPromptVisible(false);
-                  openEndSessionConfirm();
+                  openFinishSession();
                 }}
                 title="End Session"
                 variant="secondary"
@@ -1456,32 +1385,8 @@ export function ActiveSessionScreen() {
             </View>
           </AppCard>
       </DismissibleModal>
-
-      <DismissibleModal onDismiss={() => setIsDiscardConfirmVisible(false)} visible={isDiscardConfirmVisible}>
-          <AppCard style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Discard session?</Text>
-            <Text style={styles.confirmCopy}>
-              This will delete the current active session and return you to the Climb page. This cannot be undone.
-            </Text>
-            <View style={styles.confirmActions}>
-              <AppButton
-                disabled={isLoading}
-                icon="trash-2"
-                onPress={() => void handleDiscardSession()}
-                title="Discard Session"
-                variant="destructive"
-              />
-              <AppButton
-                disabled={isLoading}
-                icon="x"
-                onPress={() => setIsDiscardConfirmVisible(false)}
-                title="Cancel"
-                variant="secondary"
-              />
-            </View>
-          </AppCard>
-      </DismissibleModal>
     </ScrollView>
+    </Animated.View>
   );
 }
 
@@ -1517,21 +1422,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
     textTransform: 'uppercase',
   },
-  textInput: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    color: colors.charcoal,
-    fontSize: 15,
-    fontWeight: '700',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
   finishButton: {
     minHeight: 42,
     paddingHorizontal: spacing.md,
+  },
+  finishActionButton: {
+    backgroundColor: colors.amber,
+    borderColor: 'rgba(30,30,30,0.1)',
   },
   activeHint: {
     color: colors.muted,
@@ -1568,13 +1465,20 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   quickAddButton: {
+    alignItems: 'center',
+    backgroundColor: colors.charcoal,
+    borderRadius: radius.lg,
     flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: spacing.md,
   },
-  quickAddCard: {
-    gap: spacing.md,
-    padding: spacing.lg,
+  quickAddButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '900',
   },
   quickAddRow: {
     alignItems: 'center',
@@ -1666,16 +1570,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 88,
   },
-  sectionHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-  },
   sectionTitle: {
     color: colors.charcoal,
     fontSize: 18,
     fontWeight: '800',
+  },
+  secondaryControlButton: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
+  secondaryControlRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  screen: {
+    flex: 1,
+  },
+  discardButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
   },
   stepperButton: {
     alignItems: 'center',
@@ -1688,6 +1603,9 @@ const styles = StyleSheet.create({
   },
   disabledStepperButton: {
     opacity: 0.36,
+  },
+  disabledControl: {
+    opacity: 0.48,
   },
   stepperGrade: {
     color: colors.charcoal,
@@ -1764,70 +1682,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  compactStatsCard: {
-    backgroundColor: 'rgba(255,253,248,0.68)',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  compactStat: {
-    flex: 1,
-  },
-  dangerZoneCard: {
-    backgroundColor: 'rgba(255,150,102,0.08)',
-    borderColor: 'rgba(184,90,59,0.26)',
-    gap: spacing.md,
-    marginTop: spacing.xl,
-    padding: spacing.lg,
-  },
-  dangerZoneCopy: {
-    gap: spacing.xs,
-  },
-  dangerZoneText: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  dangerZoneTitle: {
-    color: destructiveRed,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  discardButton: {
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    gap: spacing.xs,
-    padding: spacing.lg,
-  },
-  statValue: {
-    color: colors.charcoal,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  statLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: '900',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-  },
-  modalOverlay: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(30,30,30,0.34)',
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xxl,
-  },
   confirmCard: {
     maxHeight: '100%',
     maxWidth: 420,
@@ -1845,25 +1699,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 22,
     marginBottom: spacing.xl,
-  },
-  descriptionInput: {
-    minHeight: 92,
-    paddingTop: spacing.md,
-  },
-  finalizationHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  finalizationSection: {
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  finalizationTitle: {
-    color: colors.charcoal,
-    fontSize: 16,
-    fontWeight: '800',
   },
   confirmActions: {
     gap: spacing.md,

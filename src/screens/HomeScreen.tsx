@@ -6,7 +6,6 @@ import { AppCard } from '../components/AppCard';
 import { AppButton } from '../components/AppButton';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { SectionHeader } from '../components/SectionHeader';
-import { StatCard } from '../components/StatCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { AggregateStats, sessionSummaryService } from '../features/summaries';
 
@@ -89,40 +88,34 @@ export function HomeScreen() {
 
       <SectionHeader title="Lifetime Statistics" />
 
-      <View style={styles.grid}>
-        <StatCard
-          compact
-          icon="triangle"
-          accent="mint"
-          value={isStatsLoading ? '...' : String(lifetimeStats.sessions)}
-          label="Sessions"
-          style={styles.stat}
-        />
-        <StatCard
-          compact
-          icon="link"
-          accent="amber"
-          value={isStatsLoading ? '...' : String(lifetimeStats.totalClimbs)}
-          label="Climbs Logged"
-          style={styles.stat}
-        />
-        <StatCard
-          compact
-          icon="bar-chart-2"
-          accent="lavender"
-          value={isStatsLoading ? '...' : String(lifetimeStats.totalAttempts)}
-          label="Total Attempts"
-          style={styles.stat}
-        />
-        <StatCard
-          compact
-          icon="star"
-          accent="coral"
-          value={isStatsLoading ? '...' : lifetimeStats.highestGradeCompleted ?? 'None'}
-          label="Highest Completed"
-          style={styles.stat}
-        />
-      </View>
+      <AppCard style={styles.lifetimePanel}>
+        <View style={styles.bestRow}>
+          <View style={styles.bestIcon}>
+            <Feather name="star" size={17} color={colors.charcoal} />
+          </View>
+          <View style={styles.bestCopy}>
+            <Text style={styles.bestLabel}>Best sent</Text>
+            <Text style={styles.bestValue}>{isStatsLoading ? '...' : lifetimeStats.highestGradeCompleted ?? 'None yet'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.metricRow}>
+          <View style={styles.metricItem}>
+            <Text style={styles.metricValue}>{isStatsLoading ? '...' : String(lifetimeStats.sessions)}</Text>
+            <Text style={styles.metricLabel}>Sessions</Text>
+          </View>
+          <View style={styles.metricDivider} />
+          <View style={styles.metricItem}>
+            <Text style={styles.metricValue}>{isStatsLoading ? '...' : String(lifetimeStats.totalClimbs)}</Text>
+            <Text style={styles.metricLabel}>Climbs</Text>
+          </View>
+          <View style={styles.metricDivider} />
+          <View style={styles.metricItem}>
+            <Text style={styles.metricValue}>{isStatsLoading ? '...' : String(lifetimeStats.totalAttempts)}</Text>
+            <Text style={styles.metricLabel}>Attempts</Text>
+          </View>
+        </View>
+      </AppCard>
 
       <SectionHeader title="Friend Activity" />
       <AppCard style={styles.comingSoonCard}>
@@ -157,10 +150,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
-  grid: {
+  bestCopy: {
+    flex: 1,
+  },
+  bestIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.coral,
+    borderRadius: radius.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  bestLabel: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  bestRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.stone,
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  bestValue: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 23,
+    fontWeight: '900',
+    lineHeight: 27,
+    marginTop: 1,
   },
   comingSoonCard: {
     alignItems: 'center',
@@ -233,8 +255,37 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
   },
-  stat: {
-    width: '47.8%',
+  lifetimePanel: {
+    padding: spacing.lg,
+  },
+  metricDivider: {
+    backgroundColor: colors.stone,
+    height: 36,
+    width: 1,
+  },
+  metricItem: {
+    flex: 1,
+  },
+  metricLabel: {
+    color: colors.muted,
+    fontFamily: fonts.extraBold,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  metricRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingTop: spacing.md,
+  },
+  metricValue: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 26,
   },
   streakFlair: {
     alignItems: 'center',

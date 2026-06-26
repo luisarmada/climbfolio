@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     width: 44,
   },
   content: {
-    paddingBottom: 132,
+    paddingBottom: 240,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },

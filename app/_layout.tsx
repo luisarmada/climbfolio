@@ -55,7 +55,11 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.chalk },
           headerShown: false,
         }}
-      />
+      >
+        <Stack.Screen name="session/active" options={{ animation: 'none' }} />
+        <Stack.Screen name="session/finish" options={{ animation: 'none' }} />
+        <Stack.Screen name="session/summary" options={{ animation: 'none' }} />
+      </Stack>
     </SafeAreaProvider>
   );
 }

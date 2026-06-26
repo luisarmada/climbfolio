@@ -40,7 +40,7 @@ type ActiveClimbCardProps = {
   mainFeatureRequiredSignal?: number;
   onAddAttempt: () => void;
   onDelete: () => void;
-  onGiveUp: () => void;
+  onAnotherTime: () => void;
   onSentIt: () => void;
   onUndoAttempt: () => void;
   onUpdate: (input: EditableClimbInput) => void;
@@ -108,7 +108,7 @@ export function ActiveClimbCard({
   mainFeatureRequiredSignal = 0,
   onAddAttempt,
   onDelete,
-  onGiveUp,
+  onAnotherTime,
   onSentIt,
   onUndoAttempt,
   onUpdate,
@@ -355,9 +355,9 @@ export function ActiveClimbCard({
         <AppButton
           disabled={disabled}
           icon="x-circle"
-          onPress={() => completeClimb(onGiveUp)}
+          onPress={() => completeClimb(onAnotherTime)}
           style={styles.halfButton}
-          title="Give Up"
+          title="Another Time"
           variant="secondary"
         />
         <AppButton
@@ -690,8 +690,8 @@ export function DoneClimbCard({
               {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={34} /> : null}
               <Text style={styles.doneGrade}>{gradeLabel}</Text>
               {climb.colour ? <Text style={styles.doneMeta}>{colourLabel}</Text> : null}
-              <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.giveUpState]}>
-                {climb.completed ? 'Sent it' : 'Gave up'}
+              <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.anotherTimeState]}>
+                {climb.completed ? 'Sent it' : 'Another time'}
               </Text>
             </View>
             <View style={styles.doneIconActions}>
@@ -970,7 +970,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 40,
   },
-  giveUpState: {
+  anotherTimeState: {
     backgroundColor: 'rgba(255,150,102,0.18)',
     color: '#9A4E31',
   },
