@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
 import { formatDuration } from '../features/summaries';
 import { useActiveSessionStore } from '../features/sessions';
@@ -22,8 +23,30 @@ export function ActiveSessionBanner() {
   const addAttempt = useActiveSessionStore((state) => state.addAttempt);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
   const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
+  const pulse = useRef(new Animated.Value(0)).current;
   const isActiveSessionRoute = pathname.startsWith('/session/active');
   const canAddAttempt = Boolean(activeClimb) && !isLoading;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          duration: 900,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          duration: 900,
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+
+    return () => animation.stop();
+  }, [pulse]);
 
   if (!activeSession || isActiveSessionRoute) {
     return null;
@@ -38,11 +61,32 @@ export function ActiveSessionBanner() {
         onPress={() => router.push('/session/active')}
         style={styles.mainAction}
       >
-        <View style={styles.iconCircle}>
-          <Feather name="activity" size={18} color={colors.charcoal} />
+        <View style={styles.chevronIcon}>
+          <Feather name="chevron-up" size={20} color={colors.charcoal} />
         </View>
         <View style={styles.copy}>
-          <Text style={styles.label}>Session in progress</Text>
+          <View style={styles.labelRow}>
+            <Animated.View
+              style={[
+                styles.pulseDot,
+                {
+                  opacity: pulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.55, 1],
+                  }),
+                  transform: [
+                    {
+                      scale: pulse.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.86, 1.18],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+            <Text style={styles.label}>Session in progress</Text>
+          </View>
           <Text numberOfLines={1} style={styles.detail}>
             {formatDuration(elapsedSeconds)} | {activeClimb ? formatClimbLabel(activeClimb.grade, activeClimb.colour) : 'Resting'}
           </Text>
@@ -119,13 +163,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSoft,
     opacity: 0.58,
   },
-  iconCircle: {
+  chevronIcon: {
     alignItems: 'center',
-    backgroundColor: colors.amber,
-    borderRadius: radius.pill,
-    height: 38,
+    height: 24,
     justifyContent: 'center',
-    width: 38,
+    width: 24,
   },
   label: {
     color: colors.muted,
@@ -134,12 +176,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
   },
+  labelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   mainAction: {
     alignItems: 'center',
     flex: 1,
     flexDirection: 'row',
     gap: spacing.md,
     minWidth: 0,
+  },
+  pulseDot: {
+    backgroundColor: colors.success,
+    borderRadius: radius.pill,
+    height: 8,
+    width: 8,
   },
   wrapper: {
     ...shadow,

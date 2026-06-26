@@ -122,10 +122,10 @@ export function SessionDetailScreen() {
                     {index + 1}. {climb.grade}
                   </Text>
                   <Text style={styles.climbMeta}>
-                    {formatColourDisplay(climb.colour)} - {climb.completed ? 'Sent it' : 'Gave up'}
+                    {formatColourDisplay(climb.colour)} - {climb.completed ? 'Sent it' : 'Another time'}
                   </Text>
                 </View>
-                <View style={[styles.statusPill, climb.completed ? styles.sentPill : styles.gaveUpPill]}>
+                <View style={[styles.statusPill, climb.completed ? styles.sentPill : styles.anotherTimePill]}>
                   <Text style={styles.statusText}>{climb.completed ? 'Sent' : 'Tried'}</Text>
                 </View>
               </View>
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: spacing.sm,
   },
-  gaveUpPill: {
+  anotherTimePill: {
     backgroundColor: 'rgba(255,150,102,0.2)',
   },
   sentPill: {
