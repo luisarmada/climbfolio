@@ -945,22 +945,21 @@ export function ActiveSessionScreen() {
                 onPress={handleAddNewClimb}
                 title="Add New Climb"
               />
-              <View style={styles.secondaryControlRow}>
-                <AppButton
-                  disabled={isLoading}
-                  icon="settings"
-                  onPress={() => undefined}
-                  style={styles.secondaryControlButton}
-                  title="Settings"
-                  variant="secondary"
-                />
-                <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.secondaryControlButton} />
-              </View>
             </>
           ) : null}
 
           {activeClimb ? <Text style={styles.activeHint}>Finish the current climb with Sent It or Another Time before adding another.</Text> : null}
-          {activeClimb ? <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.discardButton} /> : null}
+          <View style={styles.secondaryControlRow}>
+            <AppButton
+              disabled={isLoading}
+              icon="settings"
+              onPress={() => undefined}
+              style={styles.secondaryControlButton}
+              title="Settings"
+              variant="secondary"
+            />
+            <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.secondaryControlButton} />
+          </View>
         </>
       ) : (
         <AppButton
@@ -1586,11 +1585,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-  },
-  discardButton: {
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
   },
   stepperButton: {
     alignItems: 'center',
