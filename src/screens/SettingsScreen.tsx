@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Href, useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 
 type SettingsRow = {
@@ -42,13 +43,11 @@ const settingsSections: SettingsSection[] = [
         label: 'Locations',
       },
       { detail: 'Profile visibility, followers, and sharing controls', label: 'Privacy and social' },
-      { detail: 'Move session data in or out of Climb Book', label: 'Export / import data' },
     ],
   },
   {
     title: 'Help',
     rows: [
-      { detail: 'Version, legal, and product information', label: 'About' },
       { detail: 'Questions, feedback, or support', label: 'Contact us' },
       { detail: 'Leave a rating when the app is published', label: 'Review on App Store' },
     ],
@@ -57,11 +56,12 @@ const settingsSections: SettingsSection[] = [
 
 export function SettingsScreen() {
   const router = useRouter();
+  const { returnToProfile } = useProfileReturnTransition();
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topRow}>
-        <TouchableOpacity activeOpacity={0.72} accessibilityLabel="Back to profile" accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity activeOpacity={0.72} accessibilityLabel="Back to profile" accessibilityRole="button" onPress={returnToProfile} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
         </TouchableOpacity>
         <View style={styles.titleBlock}>

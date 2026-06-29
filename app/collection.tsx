@@ -1,11 +1,11 @@
 import { AppShell } from '../src/components/AppShell';
+import { CollectionScreen } from '../src/screens/CollectionScreen';
 import { ProfileScreen } from '../src/screens/ProfileScreen';
-import { SettingsScreen } from '../src/screens/SettingsScreen';
 
-export default function SettingsRoute() {
+export default function CollectionRoute() {
   return (
     <AppShell transition="slideLeft" underlay={<ProfileScreen />}>
-      <SettingsScreen />
+      <CollectionScreen />
     </AppShell>
   );
 }

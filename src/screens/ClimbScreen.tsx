@@ -1,23 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { DismissibleModal } from '../components/DismissibleModal';
+import { SessionLocationPickerModal } from '../components/SessionLocationPickerModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { ClimbingLocationType } from '../domain/models';
 import { builtInGradingScales } from '../domain/gradeScales';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { useActiveSessionStore } from '../features/sessions';
 
 const climbingGymImage = require('../assets/images/climbing-gym.png');
-const locationTypes: { label: string; value: ClimbingLocationType }[] = [
-  { label: 'Gym', value: 'gym' },
-  { label: 'Outdoor', value: 'outdoor' },
-  { label: 'Other', value: 'other' },
-];
 
 export function ClimbScreen() {
   const router = useRouter();
@@ -26,19 +21,13 @@ export function ClimbScreen() {
   const isLoading = useActiveSessionStore((state) => state.isLoading);
   const restoreActiveSession = useActiveSessionStore((state) => state.restoreActiveSession);
   const startSession = useActiveSessionStore((state) => state.startSession);
-  const createLocation = useLocationStore((state) => state.createLocation);
   const loadLocations = useLocationStore((state) => state.loadLocations);
   const locationError = useLocationStore((state) => state.error);
-  const locations = useLocationStore((state) => state.locations);
   const selectLocation = useLocationStore((state) => state.selectLocation);
   const selectedLocation = useLocationStore((state) => state.selectedLocation);
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
-  const [draftLocationGradeScaleId, setDraftLocationGradeScaleId] = useState('v_scale');
-  const [draftLocationName, setDraftLocationName] = useState('');
-  const [draftLocationType, setDraftLocationType] = useState<ClimbingLocationType>('gym');
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
-  const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false);
   const hasActiveSession = Boolean(activeSession);
 
@@ -47,12 +36,6 @@ export function ClimbScreen() {
     void loadLocations();
     void loadPreferences();
   }, [loadLocations, loadPreferences, restoreActiveSession]);
-
-  useEffect(() => {
-    if (preferences?.selectedGradingScaleId) {
-      setDraftLocationGradeScaleId(preferences.selectedGradingScaleId);
-    }
-  }, [preferences?.selectedGradingScaleId]);
 
   const gradeScaleOptions = useMemo(
     () => [
@@ -82,40 +65,16 @@ export function ClimbScreen() {
   }
 
   function openLocationPicker() {
-    setIsCreatingLocation(false);
     setIsLocationPickerVisible(true);
   }
 
   function closeLocationPicker() {
-    setIsCreatingLocation(false);
     setIsLocationPickerVisible(false);
-  }
-
-  function openCreateLocation() {
-    setDraftLocationGradeScaleId(preferences?.selectedGradingScaleId ?? 'v_scale');
-    setDraftLocationName('');
-    setDraftLocationType('gym');
-    setIsCreatingLocation(true);
   }
 
   function openCreateCustomGradeScale() {
     closeLocationPicker();
     router.push('/settings/climbing');
-  }
-
-  async function handleCreateLocation() {
-    if (!draftLocationName.trim()) {
-      return;
-    }
-
-    await createLocation({
-      gradingScaleId: draftLocationGradeScaleId,
-      isSelected: true,
-      name: draftLocationName,
-      type: draftLocationType,
-    });
-    setDraftLocationName('');
-    setIsCreatingLocation(false);
   }
 
   return (
@@ -174,7 +133,18 @@ export function ClimbScreen() {
 
       <DismissibleModal onDismiss={() => setIsConfirmVisible(false)} visible={isConfirmVisible}>
           <AppCard style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Start session here?</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Start session here?</Text>
+              <TouchableOpacity
+                activeOpacity={0.76}
+                accessibilityLabel="Close session confirmation"
+                accessibilityRole="button"
+                onPress={() => setIsConfirmVisible(false)}
+                style={styles.closeButton}
+              >
+                <Feather name="x" size={18} color={colors.charcoal} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.modalCopy}>
               {selectedLocation
                 ? `${selectedLocation.name} will be saved to this session.`
@@ -196,155 +166,24 @@ export function ClimbScreen() {
                 title={selectedLocation ? 'Change Location' : 'Choose Location'}
                 variant="secondary"
               />
-              <AppButton icon="x" onPress={() => setIsConfirmVisible(false)} title="Cancel" variant="secondary" />
             </View>
           </AppCard>
       </DismissibleModal>
 
-      <DismissibleModal onDismiss={closeLocationPicker} visible={isLocationPickerVisible}>
-          <AppCard style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Session location</Text>
-              <View style={styles.modalHeaderActions}>
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel="Edit saved locations"
-                  accessibilityRole="button"
-                  onPress={() => {
-                    closeLocationPicker();
-                    router.push('/settings/locations');
-                  }}
-                  style={styles.closeButton}
-                >
-                  <Feather name="edit-2" size={17} color={colors.charcoal} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel="Close location picker"
-                  accessibilityRole="button"
-                  onPress={closeLocationPicker}
-                  style={styles.closeButton}
-                >
-                  <Feather name="x" size={18} color={colors.charcoal} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <ScrollView contentContainerStyle={styles.locationPickerContent} showsVerticalScrollIndicator={false}>
-              {isCreatingLocation ? (
-                <>
-                  <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Back to session locations"
-                    accessibilityRole="button"
-                    onPress={() => setIsCreatingLocation(false)}
-                    style={styles.backOption}
-                  >
-                    <Feather name="chevron-left" size={18} color={colors.charcoal} />
-                    <Text style={styles.backOptionText}>Session locations</Text>
-                  </TouchableOpacity>
-
-                  <Text style={styles.formLabel}>Create new location</Text>
-                  <TextInput
-                    accessibilityLabel="Location name"
-                    onChangeText={setDraftLocationName}
-                    placeholder="Location name"
-                    placeholderTextColor={colors.muted}
-                    style={styles.input}
-                    value={draftLocationName}
-                  />
-                  <View style={styles.typeGrid}>
-                    {locationTypes.map((type) => {
-                      const selected = draftLocationType === type.value;
-
-                      return (
-                        <TouchableOpacity
-                          activeOpacity={0.76}
-                          accessibilityLabel={`Set location type to ${type.label}`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          key={type.value}
-                          onPress={() => setDraftLocationType(type.value)}
-                          style={[styles.typeButton, selected && styles.selectedLocationOption]}
-                        >
-                          <Text style={styles.typeButtonText}>{type.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <Text style={styles.formLabel}>Grade scale</Text>
-                  <View style={styles.gradeScaleList}>
-                    {gradeScaleOptions.map((scale) => {
-                      const selected = draftLocationGradeScaleId === scale.id;
-
-                      return (
-                        <TouchableOpacity
-                          activeOpacity={0.76}
-                          accessibilityLabel={`Use ${scale.name}`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          key={scale.id}
-                          onPress={() => setDraftLocationGradeScaleId(scale.id)}
-                          style={[styles.gradeScaleOption, selected && styles.selectedLocationOption]}
-                        >
-                          <Text style={styles.gradeScaleText}>{scale.name}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel="Create custom grade scale"
-                      accessibilityRole="button"
-                      onPress={openCreateCustomGradeScale}
-                      style={[styles.gradeScaleOption, styles.createOption]}
-                    >
-                      <Feather name="plus" size={18} color={colors.charcoal} />
-                      <Text style={styles.gradeScaleText}>Create custom grade scale</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <AppButton disabled={!draftLocationName.trim()} onPress={() => void handleCreateLocation()} title="Add Location" />
-                </>
-              ) : (
-                <>
-                  {locations.map((location) => {
-                    const selected = selectedLocation?.id === location.id;
-
-                    return (
-                      <TouchableOpacity
-                        activeOpacity={0.76}
-                        accessibilityLabel={`Use ${location.name}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        key={location.id}
-                        onPress={() => {
-                          void selectLocation(location.id);
-                          closeLocationPicker();
-                        }}
-                        style={[styles.locationOption, selected && styles.selectedLocationOption]}
-                      >
-                        <View style={styles.locationCopy}>
-                          <Text style={styles.locationName}>{location.name}</Text>
-                          <Text style={styles.locationDetail}>{getGradeScaleName(location.gradingScaleId)}</Text>
-                        </View>
-                        <Text style={styles.selectedText}>{selected ? 'Selected' : ''}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Create new location"
-                    accessibilityRole="button"
-                    onPress={openCreateLocation}
-                    style={[styles.locationOption, styles.createOption]}
-                  >
-                    <Feather name="plus" size={18} color={colors.charcoal} />
-                    <Text style={styles.createOptionText}>Create new location</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </ScrollView>
-          </AppCard>
-      </DismissibleModal>
+      <SessionLocationPickerModal
+        createLocationSelectsDefault
+        onCreateCustomGradeScale={openCreateCustomGradeScale}
+        onDismiss={closeLocationPicker}
+        onOpenLocationSettings={() => {
+          closeLocationPicker();
+          router.push('/settings/locations');
+        }}
+        onSelectLocation={async (location) => {
+          await selectLocation(location?.id ?? null);
+        }}
+        selectedLocationId={selectedLocation?.id ?? null}
+        visible={isLocationPickerVisible}
+      />
     </ScrollView>
   );
 }
@@ -412,58 +251,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
-  backOption: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minHeight: 36,
-  },
-  backOptionText: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  createOption: {
-    backgroundColor: 'transparent',
-    borderColor: colors.muted,
-    borderStyle: 'dotted',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  createOptionText: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  formLabel: {
-    color: colors.muted,
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  gradeScaleList: {
-    gap: spacing.sm,
-  },
-  gradeScaleOption: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  gradeScaleText: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    fontWeight: '700',
-  },
   hero: {
     borderColor: colors.stone,
     borderRadius: radius.xl,
@@ -480,18 +267,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '-3%',
     width: '106%',
-  },
-  input: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 15,
-    fontWeight: '700',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
   },
   locationButton: {
     backgroundColor: colors.charcoal,
@@ -538,21 +313,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  locationOption: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    minHeight: 58,
-    padding: spacing.md,
-  },
-  locationPickerContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.sm,
-  },
   modalActions: {
     gap: spacing.md,
   },
@@ -575,17 +335,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.lg,
   },
-  modalHeaderActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  modalOverlay: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(30,30,30,0.28)',
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xxl,
-  },
   modalTitle: {
     color: colors.charcoal,
     fontFamily: fonts.bold,
@@ -593,38 +342,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: spacing.sm,
   },
-  selectedLocationOption: {
-    backgroundColor: 'rgba(168,221,191,0.28)',
-    borderColor: colors.mint,
-  },
-  selectedText: {
-    color: colors.success,
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   title: {
     ...typography.title,
     color: colors.charcoal,
-  },
-  typeButton: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 42,
-    justifyContent: 'center',
-  },
-  typeButtonText: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
   },
 });

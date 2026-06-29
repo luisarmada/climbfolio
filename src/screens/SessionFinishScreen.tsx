@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Animated, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useAppShellTransition } from '../components/AppShell';
 import { SessionDiscardSection } from '../components/SessionDiscardSection';
 import { SessionLiveStatsRow } from '../components/SessionLiveStatsRow';
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -30,8 +31,7 @@ function formatSessionDurationWords(totalSeconds: number) {
 
 export function SessionFinishScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const entryProgress = useRef(new Animated.Value(1)).current;
+  const { goBackWithTransition } = useAppShellTransition();
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const activeSession = useActiveSessionStore((state) => state.activeSession);
   const discardActiveClimb = useActiveSessionStore((state) => state.discardActiveClimb);
@@ -53,16 +53,6 @@ export function SessionFinishScreen() {
     name: '',
   });
   const [defaultSessionNamePreview, setDefaultSessionNamePreview] = useState(getDefaultSessionName());
-
-  useEffect(() => {
-    entryProgress.setValue(1);
-    Animated.timing(entryProgress, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
-  }, [entryProgress]);
 
   useEffect(() => {
     let isMounted = true;
@@ -145,12 +135,7 @@ export function SessionFinishScreen() {
   }
 
   function returnToActiveSession() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/session/active');
+    goBackWithTransition('/session/active');
   }
 
   if (!activeSession) {
@@ -162,13 +147,8 @@ export function SessionFinishScreen() {
     );
   }
 
-  const entryTranslateX = entryProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, width],
-  });
-
   return (
-    <Animated.View style={[styles.screen, { transform: [{ translateX: entryTranslateX }] }]}>
+    <View style={styles.screen}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
           <TouchableOpacity
@@ -273,7 +253,7 @@ export function SessionFinishScreen() {
 
         <SessionDiscardSection disabled={isLoading} display="text" onDiscard={handleDiscardSession} style={styles.discardTextButton} />
     </ScrollView>
-    </Animated.View>
+    </View>
   );
 }
 

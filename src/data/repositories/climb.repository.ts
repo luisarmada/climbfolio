@@ -1,4 +1,5 @@
 import { Climb, CreateClimbInput, UpdateClimbInput } from '../../domain/models';
+import { GradingScaleType, VGradeRange, normalizeVGradeRange, resolveGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
 import { createLocalId } from '../../utils/ids';
 import { parseStringArrayJson, stringifyStringArray } from '../../utils/json';
@@ -9,6 +10,11 @@ type ClimbRow = {
   id: string;
   session_id: string;
   grade: string;
+  grading_scale_grades_json?: string | null;
+  grading_scale_is_tape?: number | null;
+  grading_scale_name?: string | null;
+  grading_scale_type?: string | null;
+  grading_scale_v_ranges_json?: string | null;
   colour: string | null;
   hold_types_json: string;
   start_time: string;
@@ -35,11 +41,67 @@ export type ClimbRepository = {
   discard(climbId: string, deletedAt?: string): Promise<Climb | null>;
 };
 
+function parseJsonArray(value: string | null | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseVGradeRanges(value: string | null | undefined) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<Record<string, VGradeRange>>((ranges, [grade, range]) => {
+      if (!range || typeof range !== 'object' || Array.isArray(range)) {
+        return ranges;
+      }
+
+      const maybeRange = range as Partial<VGradeRange>;
+      ranges[grade] = normalizeVGradeRange({
+        min: typeof maybeRange.min === 'string' ? maybeRange.min : 'V0',
+        max: typeof maybeRange.max === 'string' ? maybeRange.max : 'V0',
+      });
+      return ranges;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function normalizeScaleType(value: string | null | undefined): GradingScaleType {
+  return value === 'font' || value === 'custom' || value === 'v_scale' ? value : 'v_scale';
+}
+
 function mapClimb(row: ClimbRow): Climb {
+  const fallbackScale = resolveGradingScale({ gradingScaleType: 'v_scale' });
+  const gradingScaleGrades = parseJsonArray(row.grading_scale_grades_json);
+  const gradingScaleVGradeRanges = parseVGradeRanges(row.grading_scale_v_ranges_json);
+
   return {
     id: row.id,
     sessionId: row.session_id,
     grade: row.grade,
+    gradingScaleGrades: gradingScaleGrades.length > 0 ? gradingScaleGrades : fallbackScale.gradingScaleGrades,
+    gradingScaleIsTape: Boolean(row.grading_scale_is_tape),
+    gradingScaleName: row.grading_scale_name || fallbackScale.gradingScaleName,
+    gradingScaleType: normalizeScaleType(row.grading_scale_type),
+    gradingScaleVGradeRanges:
+      Object.keys(gradingScaleVGradeRanges).length > 0 ? gradingScaleVGradeRanges : fallbackScale.gradingScaleVGradeRanges,
     colour: row.colour,
     holdTypes: parseStringArrayJson(row.hold_types_json),
     startTime: row.start_time,
@@ -63,6 +125,12 @@ export const climbRepository: ClimbRepository = {
       id: input.id ?? createLocalId('climb'),
       sessionId: input.sessionId,
       grade: input.grade,
+      gradingScaleGrades: input.gradingScaleGrades ?? resolveGradingScale({ gradingScaleType: 'v_scale' }).gradingScaleGrades,
+      gradingScaleIsTape: Boolean(input.gradingScaleIsTape),
+      gradingScaleName: input.gradingScaleName ?? resolveGradingScale({ gradingScaleType: 'v_scale' }).gradingScaleName,
+      gradingScaleType: input.gradingScaleType ?? resolveGradingScale({ gradingScaleType: 'v_scale' }).gradingScaleType,
+      gradingScaleVGradeRanges:
+        input.gradingScaleVGradeRanges ?? resolveGradingScale({ gradingScaleType: 'v_scale' }).gradingScaleVGradeRanges,
       colour: input.colour ?? null,
       holdTypes: input.holdTypes ?? [],
       startTime: input.startTime ?? timestamp,
@@ -80,15 +148,21 @@ export const climbRepository: ClimbRepository = {
     await database.runAsync(
       `
         INSERT INTO climbs (
-          id, session_id, grade, colour, hold_types_json, start_time, end_time,
+          id, session_id, grade, grading_scale_type, grading_scale_name, grading_scale_grades_json,
+          grading_scale_is_tape, grading_scale_v_ranges_json, colour, hold_types_json, start_time, end_time,
           duration_seconds, attempt_count, completed, rest_before_climb_seconds, sort_order,
           created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       [
         climb.id,
         climb.sessionId,
         climb.grade,
+        climb.gradingScaleType,
+        climb.gradingScaleName,
+        JSON.stringify(climb.gradingScaleGrades),
+        climb.gradingScaleIsTape ? 1 : 0,
+        JSON.stringify(climb.gradingScaleVGradeRanges),
         climb.colour,
         stringifyStringArray(climb.holdTypes),
         climb.startTime,
@@ -173,6 +247,11 @@ export const climbRepository: ClimbRepository = {
     const next: Climb = {
       ...current,
       grade: input.grade ?? current.grade,
+      gradingScaleGrades: input.gradingScaleGrades ?? current.gradingScaleGrades,
+      gradingScaleIsTape: input.gradingScaleIsTape ?? current.gradingScaleIsTape,
+      gradingScaleName: input.gradingScaleName ?? current.gradingScaleName,
+      gradingScaleType: input.gradingScaleType ?? current.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges ?? current.gradingScaleVGradeRanges,
       colour: input.colour === undefined ? current.colour : input.colour,
       holdTypes: input.holdTypes ?? current.holdTypes,
       endTime: input.endTime === undefined ? current.endTime : input.endTime,
@@ -189,12 +268,18 @@ export const climbRepository: ClimbRepository = {
     await database.runAsync(
       `
         UPDATE climbs
-        SET grade = ?, colour = ?, hold_types_json = ?, end_time = ?, duration_seconds = ?,
+        SET grade = ?, grading_scale_type = ?, grading_scale_name = ?, grading_scale_grades_json = ?,
+          grading_scale_is_tape = ?, grading_scale_v_ranges_json = ?, colour = ?, hold_types_json = ?, end_time = ?, duration_seconds = ?,
           attempt_count = ?, completed = ?, rest_before_climb_seconds = ?, sort_order = ?, deleted_at = ?, updated_at = ?
         WHERE id = ?;
       `,
       [
         next.grade,
+        next.gradingScaleType,
+        next.gradingScaleName,
+        JSON.stringify(next.gradingScaleGrades),
+        next.gradingScaleIsTape ? 1 : 0,
+        JSON.stringify(next.gradingScaleVGradeRanges),
         next.colour,
         stringifyStringArray(next.holdTypes),
         next.endTime,

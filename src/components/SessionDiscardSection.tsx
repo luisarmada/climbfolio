@@ -48,13 +48,24 @@ export function SessionDiscardSection({ disabled = false, display = 'button', on
 
       <DismissibleModal onDismiss={() => setIsConfirmVisible(false)} visible={isConfirmVisible}>
         <AppCard style={styles.confirmCard}>
-          <Text style={styles.confirmTitle}>Discard session?</Text>
+          <View style={styles.confirmHeader}>
+            <Text style={styles.confirmTitle}>Discard session?</Text>
+            <TouchableOpacity
+              activeOpacity={0.76}
+              accessibilityLabel="Close discard confirmation"
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() => setIsConfirmVisible(false)}
+              style={styles.closeButton}
+            >
+              <Feather name="x" size={18} color={colors.charcoal} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.confirmCopy}>
             This will delete the current active session and return you to the Climb page. This cannot be undone.
           </Text>
           <View style={styles.actions}>
             <AppButton disabled={disabled} icon="trash-2" onPress={() => void handleDiscard()} title="Discard session" variant="destructive" />
-            <AppButton disabled={disabled} icon="x" onPress={() => setIsConfirmVisible(false)} title="Cancel" variant="secondary" />
           </View>
         </AppCard>
       </DismissibleModal>
@@ -72,6 +83,16 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     width: '100%',
   },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
   confirmCopy: {
     color: colors.muted,
     fontSize: 15,
@@ -79,12 +100,19 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: spacing.xl,
   },
+  confirmHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
   confirmTitle: {
     color: colors.charcoal,
+    flex: 1,
     fontSize: 22,
     fontWeight: '800',
     lineHeight: 27,
-    marginBottom: spacing.sm,
   },
   disabled: {
     opacity: 0.48,

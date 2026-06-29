@@ -1,4 +1,4 @@
-export const schemaVersion = 10;
+export const schemaVersion = 11;
 
 export const createSchemaSql = `
 PRAGMA foreign_keys = ON;
@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS climbs (
   id TEXT PRIMARY KEY NOT NULL,
   session_id TEXT NOT NULL,
   grade TEXT NOT NULL,
+  grading_scale_type TEXT NOT NULL DEFAULT 'v_scale',
+  grading_scale_name TEXT NOT NULL DEFAULT 'V Scale',
+  grading_scale_grades_json TEXT NOT NULL DEFAULT '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+  grading_scale_is_tape INTEGER NOT NULL DEFAULT 0,
+  grading_scale_v_ranges_json TEXT NOT NULL DEFAULT '{}',
   colour TEXT,
   hold_types_json TEXT NOT NULL,
   start_time TEXT NOT NULL,

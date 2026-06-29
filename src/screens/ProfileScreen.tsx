@@ -1,10 +1,12 @@
-import { ComponentProps, useEffect, useState } from 'react';
+import { ComponentProps, useCallback, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
+import { SavedSessionEditorModal } from '../components/SavedSessionEditorModal';
 import { SectionHeader } from '../components/SectionHeader';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
@@ -24,15 +26,14 @@ import {
 type FeatherName = ComponentProps<typeof Feather>['name'];
 type DashboardAction = {
   accent: string;
-  href?: '/calendar';
+  href?: '/calendar' | '/collection';
   icon: FeatherName;
   label: string;
 };
 
 const dashboardActions: DashboardAction[] = [
   { accent: colors.mint, icon: 'bar-chart-2', label: 'Statistics' },
-  { accent: colors.amber, icon: 'grid', label: 'Collection' },
-  { accent: colors.sky, icon: 'activity', label: 'Measures' },
+  { accent: colors.amber, href: '/collection', icon: 'grid', label: 'Collection' },
   { accent: colors.lavender, href: '/calendar', icon: 'calendar', label: 'Calendar' },
 ];
 
@@ -48,19 +49,26 @@ function formatSessionHistorySubtitle(summary: SessionSummary) {
   return dateTime;
 }
 
+let cachedProfileSummaries: SessionSummary[] | null = null;
+
 export function ProfileScreen() {
   const router = useRouter();
   const climbingPreferences = useClimbingPreferencesStore((state) => state.preferences);
   const loadClimbingPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const loadProfile = useProfileStore((state) => state.loadProfile);
   const profile = useProfileStore((state) => state.profile);
-  const [summaries, setSummaries] = useState<SessionSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [summaries, setSummaries] = useState<SessionSummary[]>(cachedProfileSummaries ?? []);
+  const [editingSummary, setEditingSummary] = useState<SessionSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(cachedProfileSummaries === null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadSessions() {
+      if (cachedProfileSummaries === null) {
+        setIsLoading(true);
+      }
+
       const [nextSummaries] = await Promise.all([
         sessionSummaryService.listCompletedSessionSummaries(),
         loadProfile(),
@@ -68,6 +76,7 @@ export function ProfileScreen() {
       ]);
 
       if (isMounted) {
+        cachedProfileSummaries = nextSummaries;
         setSummaries(nextSummaries);
         setIsLoading(false);
       }
@@ -78,7 +87,7 @@ export function ProfileScreen() {
     return () => {
       isMounted = false;
     };
-  }, [loadClimbingPreferences, loadProfile]);
+  }, [loadClimbingPreferences, loadProfile]));
 
   const aggregateStats = summarizeAggregate(summaries);
   const weeklyStreak = calculateWeeklyStreak(summaries);
@@ -86,6 +95,20 @@ export function ProfileScreen() {
   const displayName = profile?.displayName ?? 'Local Climber';
   const climberType = profile?.climberType ?? 'Indoor boulderer';
   const badgeText = formatProfileBadge(summaries, selectedScale);
+  const replaceSessionSummary = useCallback((nextSummary: SessionSummary) => {
+    setSummaries((currentSummaries) => {
+      const nextSummaries = currentSummaries.map((summary) => (summary.session.id === nextSummary.session.id ? nextSummary : summary));
+      cachedProfileSummaries = nextSummaries;
+      return nextSummaries;
+    });
+  }, []);
+  const removeSessionSummary = useCallback((sessionId: string) => {
+    setSummaries((currentSummaries) => {
+      const nextSummaries = currentSummaries.filter((summary) => summary.session.id !== sessionId);
+      cachedProfileSummaries = nextSummaries;
+      return nextSummaries;
+    });
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -122,21 +145,25 @@ export function ProfileScreen() {
       </View>
 
       <View style={styles.dashboardGrid}>
-        {dashboardActions.map((action) => (
-          <TouchableOpacity
-            activeOpacity={0.72}
-            accessibilityLabel={action.href ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
-            accessibilityRole="button"
-            key={action.label}
-            onPress={action.href ? () => router.push('/calendar') : undefined}
-            style={styles.dashboardButton}
-          >
-            <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
-              <Feather name={action.icon} size={21} color={colors.charcoal} />
-            </View>
-            <Text style={styles.dashboardButtonText}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {dashboardActions.map((action) => {
+          const href = action.href;
+
+          return (
+            <TouchableOpacity
+              activeOpacity={0.72}
+              accessibilityLabel={href ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
+              accessibilityRole="button"
+              key={action.label}
+              onPress={href ? () => router.push(href) : undefined}
+              style={styles.dashboardButton}
+            >
+              <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
+                <Feather name={action.icon} size={21} color={colors.charcoal} />
+              </View>
+              <Text style={styles.dashboardButtonText}>{action.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <SectionHeader title="Session History" />
@@ -157,7 +184,10 @@ export function ProfileScreen() {
         <View style={styles.sessionList}>
           {summaries.map((summary) => (
             <ActivityHighlightCard
+              actionAccessibilityLabel={`Open actions for ${getSessionDisplayName(summary.session)}`}
+              actionIcon="more-horizontal"
               key={summary.session.id}
+              onActionPress={() => setEditingSummary(summary)}
               onPress={() => router.push(`/session/${summary.session.id}`)}
               stats={[
                 { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
@@ -170,6 +200,14 @@ export function ProfileScreen() {
           ))}
         </View>
       )}
+
+      <SavedSessionEditorModal
+        onDeleted={removeSessionSummary}
+        onDismiss={() => setEditingSummary(null)}
+        onSaved={replaceSessionSummary}
+        summary={editingSummary}
+        visible={Boolean(editingSummary)}
+      />
     </ScrollView>
   );
 }
@@ -186,24 +224,24 @@ const styles = StyleSheet.create({
     borderColor: colors.stone,
     borderRadius: radius.xl,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    minHeight: 72,
-    paddingHorizontal: spacing.md,
+    flex: 1,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 86,
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
-    width: '48%',
   },
   dashboardButtonText: {
     color: colors.charcoal,
-    flex: 1,
     fontFamily: fonts.extraBold,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
-    lineHeight: 19,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   dashboardGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   dashboardHeader: {

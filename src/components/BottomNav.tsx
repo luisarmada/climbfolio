@@ -23,17 +23,35 @@ function getActiveScreen(pathname: string): ScreenKey {
     return 'climb';
   }
 
-  if (pathname.startsWith('/profile') || pathname.startsWith('/settings')) {
+  if (pathname.startsWith('/profile') || pathname.startsWith('/settings') || pathname.startsWith('/calendar') || pathname.startsWith('/collection')) {
     return 'profile';
   }
 
   return 'home';
 }
 
-export function BottomNav() {
+type BottomNavProps = {
+  onProfilePress?: () => void;
+};
+
+export function BottomNav({ onProfilePress }: BottomNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const active = getActiveScreen(pathname);
+  const handlePress = (href: Href) => {
+    const target = href.toString();
+
+    if (pathname === target) {
+      return;
+    }
+
+    if (target === '/profile' && onProfilePress) {
+      onProfilePress();
+      return;
+    }
+
+    router.replace(href);
+  };
 
   return (
     <View style={styles.wrapper}>
@@ -47,7 +65,7 @@ export function BottomNav() {
               accessibilityLabel={item.label}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
-              onPress={() => router.push(item.href)}
+              onPress={() => handlePress(item.href)}
               style={styles.item}
             >
               <Feather name={item.icon} size={27} color={isActive ? colors.charcoal : colors.muted} strokeWidth={isActive ? 2.7 : 2.2} />

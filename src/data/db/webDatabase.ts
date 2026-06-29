@@ -24,6 +24,11 @@ type ClimbRow = {
   id: string;
   session_id: string;
   grade: string;
+  grading_scale_grades_json?: string;
+  grading_scale_is_tape?: number;
+  grading_scale_name?: string;
+  grading_scale_type?: string;
+  grading_scale_v_ranges_json?: string;
   colour: string | null;
   hold_types_json: string;
   start_time: string;
@@ -135,6 +140,11 @@ function readState(): WebDatabaseState {
       ...state,
       climbs: state.climbs.map((climb) => ({
         ...climb,
+        grading_scale_grades_json: climb.grading_scale_grades_json ?? '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_is_tape: climb.grading_scale_is_tape ?? 0,
+        grading_scale_name: climb.grading_scale_name ?? 'V Scale',
+        grading_scale_type: climb.grading_scale_type ?? 'v_scale',
+        grading_scale_v_ranges_json: climb.grading_scale_v_ranges_json ?? '{}',
         sort_order: climb.sort_order ?? Date.parse(climb.start_time),
       })),
       climbingPreferences: (state.climbingPreferences ?? []).map((preferences) => ({
@@ -473,15 +483,19 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update sessions')) {
-      const [maybeNameOrEndTime, maybeDescriptionOrDurationSeconds, maybeEndTimeOrDeletedAt, maybeDurationSecondsOrUpdatedAt, maybeDeletedAtOrId, maybeUpdatedAt, maybeId] = params;
-      const hasMetadata = params.length === 7;
+      const hasLocationMetadata = params.length === 10;
+      const hasMetadata = params.length === 7 || hasLocationMetadata;
+      const [maybeNameOrEndTime, maybeDescriptionOrDurationSeconds, maybeEndTimeOrDeletedAt, maybeDurationSecondsOrLocationId, maybeLocationIdOrDeletedAt, maybeLocationNameOrUpdatedAt, maybeLocationTypeOrId, maybeDeletedAt, maybeUpdatedAt, maybeId] = params;
       const name = hasMetadata ? maybeNameOrEndTime : undefined;
       const description = hasMetadata ? maybeDescriptionOrDurationSeconds : undefined;
       const endTime = hasMetadata ? maybeEndTimeOrDeletedAt : maybeNameOrEndTime;
-      const durationSeconds = hasMetadata ? maybeDurationSecondsOrUpdatedAt : maybeDescriptionOrDurationSeconds;
-      const deletedAt = hasMetadata ? maybeDeletedAtOrId : maybeEndTimeOrDeletedAt;
-      const updatedAt = hasMetadata ? maybeUpdatedAt : maybeDurationSecondsOrUpdatedAt;
-      const id = hasMetadata ? maybeId : maybeDeletedAtOrId;
+      const durationSeconds = hasMetadata ? maybeDurationSecondsOrLocationId : maybeDescriptionOrDurationSeconds;
+      const locationId = hasLocationMetadata ? maybeLocationIdOrDeletedAt : undefined;
+      const locationName = hasLocationMetadata ? maybeLocationNameOrUpdatedAt : undefined;
+      const locationType = hasLocationMetadata ? maybeLocationTypeOrId : undefined;
+      const deletedAt = hasLocationMetadata ? maybeDeletedAt : hasMetadata ? maybeLocationIdOrDeletedAt : maybeEndTimeOrDeletedAt;
+      const updatedAt = hasLocationMetadata ? maybeUpdatedAt : hasMetadata ? maybeLocationNameOrUpdatedAt : maybeDurationSecondsOrLocationId;
+      const id = hasLocationMetadata ? maybeId : hasMetadata ? maybeLocationTypeOrId : maybeLocationIdOrDeletedAt;
       this.state.sessions = this.state.sessions.map((session) =>
         session.id === id
           ? {
@@ -490,6 +504,9 @@ class WebDatabase implements DatabaseClient {
               description: hasMetadata ? (description == null ? null : String(description)) : session.description,
               duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
               end_time: endTime == null ? null : String(endTime),
+              location_id: hasLocationMetadata ? (locationId == null ? null : String(locationId)) : session.location_id,
+              location_name: hasLocationMetadata ? (locationName == null ? null : String(locationName)) : session.location_name,
+              location_type: hasLocationMetadata ? (locationType == null ? null : String(locationType)) : session.location_type,
               name: hasMetadata ? (name == null ? null : String(name)) : session.name,
               updated_at: String(updatedAt),
             }
@@ -500,27 +517,57 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into climbs')) {
+      const hasClimbScale = params.length === 20;
       const [
         id,
         sessionId,
         grade,
-        colour,
-        holdTypesJson,
-        startTime,
-        endTime,
-        durationSeconds,
-        attemptCount,
-        completed,
-        restBeforeClimbSeconds,
-        sortOrder,
-        createdAt,
-        updatedAt,
-        deletedAt,
+        maybeGradingScaleTypeOrColour,
+        maybeGradingScaleNameOrHoldTypesJson,
+        maybeGradingScaleGradesJsonOrStartTime,
+        maybeGradingScaleIsTapeOrEndTime,
+        maybeGradingScaleRangesJsonOrDurationSeconds,
+        maybeColourOrAttemptCount,
+        maybeHoldTypesJsonOrCompleted,
+        maybeStartTimeOrRestBeforeClimbSeconds,
+        maybeEndTimeOrSortOrder,
+        maybeDurationSecondsOrCreatedAt,
+        maybeAttemptCountOrUpdatedAt,
+        maybeCompletedOrDeletedAt,
+        maybeRestBeforeClimbSeconds,
+        maybeSortOrder,
+        maybeCreatedAt,
+        maybeUpdatedAt,
+        maybeDeletedAt,
       ] = params;
+      const gradingScaleType = hasClimbScale ? maybeGradingScaleTypeOrColour : 'v_scale';
+      const gradingScaleName = hasClimbScale ? maybeGradingScaleNameOrHoldTypesJson : 'V Scale';
+      const gradingScaleGradesJson = hasClimbScale
+        ? maybeGradingScaleGradesJsonOrStartTime
+        : '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]';
+      const gradingScaleIsTape = hasClimbScale ? maybeGradingScaleIsTapeOrEndTime : 0;
+      const gradingScaleRangesJson = hasClimbScale ? maybeGradingScaleRangesJsonOrDurationSeconds : '{}';
+      const colour = hasClimbScale ? maybeColourOrAttemptCount : maybeGradingScaleTypeOrColour;
+      const holdTypesJson = hasClimbScale ? maybeHoldTypesJsonOrCompleted : maybeGradingScaleNameOrHoldTypesJson;
+      const startTime = hasClimbScale ? maybeStartTimeOrRestBeforeClimbSeconds : maybeGradingScaleGradesJsonOrStartTime;
+      const endTime = hasClimbScale ? maybeEndTimeOrSortOrder : maybeGradingScaleIsTapeOrEndTime;
+      const durationSeconds = hasClimbScale ? maybeDurationSecondsOrCreatedAt : maybeGradingScaleRangesJsonOrDurationSeconds;
+      const attemptCount = hasClimbScale ? maybeAttemptCountOrUpdatedAt : maybeColourOrAttemptCount;
+      const completed = hasClimbScale ? maybeCompletedOrDeletedAt : maybeHoldTypesJsonOrCompleted;
+      const restBeforeClimbSeconds = hasClimbScale ? maybeRestBeforeClimbSeconds : maybeStartTimeOrRestBeforeClimbSeconds;
+      const sortOrder = hasClimbScale ? maybeSortOrder : maybeEndTimeOrSortOrder;
+      const createdAt = hasClimbScale ? maybeCreatedAt : maybeDurationSecondsOrCreatedAt;
+      const updatedAt = hasClimbScale ? maybeUpdatedAt : maybeAttemptCountOrUpdatedAt;
+      const deletedAt = hasClimbScale ? maybeDeletedAt : maybeCompletedOrDeletedAt;
       this.state.climbs.push({
         id: String(id),
         session_id: String(sessionId),
         grade: String(grade),
+        grading_scale_grades_json: String(gradingScaleGradesJson),
+        grading_scale_is_tape: Number(gradingScaleIsTape),
+        grading_scale_name: String(gradingScaleName),
+        grading_scale_type: String(gradingScaleType),
+        grading_scale_v_ranges_json: String(gradingScaleRangesJson),
         colour: colour == null ? null : String(colour),
         hold_types_json: String(holdTypesJson),
         start_time: String(startTime),
@@ -550,21 +597,26 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update climbs')) {
-      const [
-        grade,
-        colour,
-        holdTypesJson,
-        endTime,
-        durationSeconds,
-        attemptCount,
-        completed,
-        restBeforeClimbSeconds,
-        sortOrderOrDeletedAt,
-        deletedAtOrUpdatedAt,
-        updatedAtOrId,
-        maybeId,
-      ] = params;
-      const hasSortOrder = params.length === 12;
+      const hasClimbScale = params.length === 17;
+      const hasSortOrder = params.length === 12 || params.length === 17;
+      const grade = params[0];
+      const gradingScaleType = hasClimbScale ? params[1] : undefined;
+      const gradingScaleName = hasClimbScale ? params[2] : undefined;
+      const gradingScaleGradesJson = hasClimbScale ? params[3] : undefined;
+      const gradingScaleIsTape = hasClimbScale ? params[4] : undefined;
+      const gradingScaleRangesJson = hasClimbScale ? params[5] : undefined;
+      const offset = hasClimbScale ? 6 : 1;
+      const colour = params[offset];
+      const holdTypesJson = params[offset + 1];
+      const endTime = params[offset + 2];
+      const durationSeconds = params[offset + 3];
+      const attemptCount = params[offset + 4];
+      const completed = params[offset + 5];
+      const restBeforeClimbSeconds = params[offset + 6];
+      const sortOrderOrDeletedAt = params[offset + 7];
+      const deletedAtOrUpdatedAt = params[offset + 8];
+      const updatedAtOrId = params[offset + 9];
+      const maybeId = params[offset + 10];
       const sortOrder = hasSortOrder ? sortOrderOrDeletedAt : undefined;
       const deletedAt = hasSortOrder ? deletedAtOrUpdatedAt : sortOrderOrDeletedAt;
       const updatedAt = hasSortOrder ? updatedAtOrId : deletedAtOrUpdatedAt;
@@ -580,6 +632,11 @@ class WebDatabase implements DatabaseClient {
               duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
               end_time: endTime == null ? null : String(endTime),
               grade: String(grade),
+              grading_scale_grades_json: hasClimbScale ? String(gradingScaleGradesJson) : climb.grading_scale_grades_json,
+              grading_scale_is_tape: hasClimbScale ? Number(gradingScaleIsTape) : climb.grading_scale_is_tape,
+              grading_scale_name: hasClimbScale ? String(gradingScaleName) : climb.grading_scale_name,
+              grading_scale_type: hasClimbScale ? String(gradingScaleType) : climb.grading_scale_type,
+              grading_scale_v_ranges_json: hasClimbScale ? String(gradingScaleRangesJson) : climb.grading_scale_v_ranges_json,
               hold_types_json: String(holdTypesJson),
               rest_before_climb_seconds: restBeforeClimbSeconds == null ? null : Number(restBeforeClimbSeconds),
               sort_order: sortOrder == null ? climb.sort_order : Number(sortOrder),

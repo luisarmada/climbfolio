@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import {
@@ -45,7 +45,7 @@ function createDefaultVGradeRanges(grades: string[]) {
 }
 
 export function ClimbingPreferencesScreen() {
-  const router = useRouter();
+  const { goBackWithTransition } = useProfileReturnTransition();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const updatePreferences = useClimbingPreferencesStore((state) => state.updatePreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
@@ -246,7 +246,7 @@ export function ClimbingPreferencesScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/settings')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -562,7 +562,6 @@ export function ClimbingPreferencesScreen() {
 
               <View style={styles.editorActions}>
                 <AppButton disabled={!canSaveDraft} onPress={handleSaveDraft} title={editingScaleId ? 'Save Scale' : 'Create Scale'} />
-                <AppButton onPress={() => setIsEditorVisible(false)} title="Cancel" variant="secondary" />
               </View>
             </ScrollView>
           </AppCard>

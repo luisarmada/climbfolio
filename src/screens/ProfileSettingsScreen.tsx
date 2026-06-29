@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
@@ -12,7 +12,7 @@ import { formatProfileBadge, useProfileStore } from '../features/profile';
 import { calculateWeeklyStreak, SessionSummary, sessionSummaryService, summarizeAggregate } from '../features/summaries';
 
 export function ProfileSettingsScreen() {
-  const router = useRouter();
+  const { goBackWithTransition } = useProfileReturnTransition();
   const climbingPreferences = useClimbingPreferencesStore((state) => state.preferences);
   const loadClimbingPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const loadProfile = useProfileStore((state) => state.loadProfile);
@@ -76,7 +76,7 @@ export function ProfileSettingsScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/settings')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />

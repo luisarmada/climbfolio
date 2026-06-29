@@ -229,6 +229,9 @@ export const sessionRepository: SessionRepository = {
       description: input.description === undefined ? current.description : input.description,
       endTime: input.endTime === undefined ? current.endTime : input.endTime,
       durationSeconds: input.durationSeconds === undefined ? current.durationSeconds : input.durationSeconds,
+      locationId: input.locationId === undefined ? current.locationId : input.locationId,
+      locationName: input.locationName === undefined ? current.locationName : input.locationName,
+      locationType: input.locationType === undefined ? current.locationType : input.locationType,
       deletedAt: input.deletedAt === undefined ? current.deletedAt : input.deletedAt,
       updatedAt,
     };
@@ -236,10 +239,21 @@ export const sessionRepository: SessionRepository = {
     await database.runAsync(
       `
         UPDATE sessions
-        SET name = ?, description = ?, end_time = ?, duration_seconds = ?, deleted_at = ?, updated_at = ?
+        SET name = ?, description = ?, end_time = ?, duration_seconds = ?, location_id = ?, location_name = ?, location_type = ?, deleted_at = ?, updated_at = ?
         WHERE id = ?;
       `,
-      [next.name, next.description, next.endTime, next.durationSeconds, next.deletedAt, next.updatedAt, next.id],
+      [
+        next.name,
+        next.description,
+        next.endTime,
+        next.durationSeconds,
+        next.locationId,
+        next.locationName,
+        next.locationType,
+        next.deletedAt,
+        next.updatedAt,
+        next.id,
+      ],
     );
 
     return next;

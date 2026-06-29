@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { ClimbingLocation, ClimbingLocationType } from '../domain/models';
@@ -23,6 +24,7 @@ function getTypeLabel(type: ClimbingLocationType) {
 
 export function LocationSettingsScreen() {
   const router = useRouter();
+  const { goBackWithTransition } = useProfileReturnTransition();
   const createLocation = useLocationStore((state) => state.createLocation);
   const error = useLocationStore((state) => state.error);
   const isLoading = useLocationStore((state) => state.isLoading);
@@ -108,7 +110,7 @@ export function LocationSettingsScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/settings')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -261,7 +263,6 @@ export function LocationSettingsScreen() {
 
               <View style={styles.editorActions}>
                 <AppButton disabled={!canSave || isLoading} onPress={() => void handleSaveLocation()} title={editingLocationId ? 'Save Location' : 'Add Location'} />
-                <AppButton onPress={() => setIsEditorVisible(false)} title="Cancel" variant="secondary" />
               </View>
             </ScrollView>
           </AppCard>

@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import {
   CalendarStats,
@@ -74,6 +75,7 @@ function groupSummariesByDay(summaries: SessionSummary[]) {
 
 export function CalendarScreen() {
   const router = useRouter();
+  const { returnToProfile } = useProfileReturnTransition();
   const [calendarStats, setCalendarStats] = useState<CalendarStats>({
     highestWeeklyStreak: 0,
     restDaysSinceLastSession: 0,
@@ -113,7 +115,13 @@ export function CalendarScreen() {
       const [summary] = daySummaries;
 
       if (summary) {
-        router.push(`/session/${summary.session.id}`);
+        router.push({
+          pathname: '/session/[sessionId]',
+          params: {
+            returnTo: 'calendar',
+            sessionId: summary.session.id,
+          },
+        });
       }
 
       return;
@@ -131,7 +139,7 @@ export function CalendarScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to profile"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={returnToProfile}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />

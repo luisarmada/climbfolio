@@ -1,4 +1,4 @@
-import { EndSessionInput, Session } from '../../domain/models';
+import { EndSessionInput, Session, SessionMetadataInput } from '../../domain/models';
 import { climbRepository, sessionRepository, statsRepository } from '../../data/repositories';
 import { resolveSelectedGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
@@ -87,6 +87,24 @@ export const sessionService = {
     const metadata = normalizeSessionMetadata(input, new Date(endTime));
 
     return sessionRepository.end(sessionId, { ...metadata, endTime });
+  },
+
+  async updateSavedSession(sessionId: string, input: SessionMetadataInput): Promise<Session | null> {
+    const name = input.name?.trim() || null;
+    const description = input.description?.trim() || null;
+    const locationName = input.locationName?.trim() || null;
+
+    return sessionRepository.update(sessionId, {
+      description,
+      locationId: locationName ? input.locationId ?? null : null,
+      locationName,
+      locationType: locationName ? input.locationType ?? null : null,
+      name,
+    });
+  },
+
+  async deleteSavedSession(sessionId: string): Promise<Session | null> {
+    return sessionRepository.update(sessionId, { deletedAt: nowIso() });
   },
 
   async discardSession(sessionId: string): Promise<Session | null> {

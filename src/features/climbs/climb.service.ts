@@ -28,6 +28,11 @@ export const climbService = {
     const climb = await climbRepository.create({
       colour: input.colour ?? null,
       grade: input.grade,
+      gradingScaleGrades: input.gradingScaleGrades,
+      gradingScaleIsTape: input.gradingScaleIsTape,
+      gradingScaleName: input.gradingScaleName,
+      gradingScaleType: input.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges,
       holdTypes: input.holdTypes ?? [],
       restBeforeClimbSeconds: lastFinishedClimb?.endTime ? secondsBetween(lastFinishedClimb.endTime, startedAt) : null,
       sessionId: input.sessionId,
@@ -101,11 +106,16 @@ export const climbService = {
     return updatedClimb;
   },
 
-  async updateClimb(climbId: string, input: Pick<StartClimbInput, 'colour' | 'grade' | 'holdTypes'>): Promise<Climb> {
+  async updateClimb(climbId: string, input: Omit<StartClimbInput, 'sessionId'>): Promise<Climb> {
     const climb = await requireActiveClimb(climbId);
     const updatedClimb = await climbRepository.update(climb.id, {
       colour: input.colour ?? null,
       grade: input.grade,
+      gradingScaleGrades: input.gradingScaleGrades,
+      gradingScaleIsTape: input.gradingScaleIsTape,
+      gradingScaleName: input.gradingScaleName,
+      gradingScaleType: input.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges,
       holdTypes: input.holdTypes ?? [],
     });
 
@@ -118,7 +128,7 @@ export const climbService = {
 
   async updateLoggedClimb(
     climbId: string,
-    input: Pick<StartClimbInput, 'colour' | 'grade' | 'holdTypes'> & {
+    input: Omit<StartClimbInput, 'sessionId'> & {
       attemptCount?: number;
       completed?: boolean;
       durationSeconds?: number | null;
@@ -136,6 +146,11 @@ export const climbService = {
       completed: input.completed,
       durationSeconds: input.durationSeconds,
       grade: input.grade,
+      gradingScaleGrades: input.gradingScaleGrades,
+      gradingScaleIsTape: input.gradingScaleIsTape,
+      gradingScaleName: input.gradingScaleName,
+      gradingScaleType: input.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges,
       holdTypes: input.holdTypes ?? [],
     });
 
@@ -188,11 +203,16 @@ export const climbService = {
     return deletedClimb;
   },
 
-  async logWarmUpClimb(input: { grade: string; sessionId: string }): Promise<Climb> {
+  async logWarmUpClimb(input: Pick<StartClimbInput, 'grade' | 'gradingScaleGrades' | 'gradingScaleIsTape' | 'gradingScaleName' | 'gradingScaleType' | 'gradingScaleVGradeRanges' | 'sessionId'>): Promise<Climb> {
     const timestamp = nowIso();
     const lastFinishedClimb = await climbRepository.getLastFinishedBySessionId(input.sessionId);
     const climb = await climbRepository.create({
       grade: input.grade,
+      gradingScaleGrades: input.gradingScaleGrades,
+      gradingScaleIsTape: input.gradingScaleIsTape,
+      gradingScaleName: input.gradingScaleName,
+      gradingScaleType: input.gradingScaleType,
+      gradingScaleVGradeRanges: input.gradingScaleVGradeRanges,
       holdTypes: [warmUpHoldType],
       restBeforeClimbSeconds: lastFinishedClimb?.endTime ? secondsBetween(lastFinishedClimb.endTime, timestamp) : null,
       sessionId: input.sessionId,

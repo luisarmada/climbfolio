@@ -9,53 +9,90 @@ type HighlightStat = {
 };
 
 type ActivityHighlightCardProps = {
+  actionAccessibilityLabel?: string;
+  actionIcon?: keyof typeof Feather.glyphMap;
   icon?: keyof typeof Feather.glyphMap;
+  onActionPress?: () => void;
   onPress?: () => void;
   stats: HighlightStat[];
   subtitle: string;
   title: string;
 };
 
-export function ActivityHighlightCard({ icon, onPress, stats, subtitle, title }: ActivityHighlightCardProps) {
-  const content = (
+export function ActivityHighlightCard({
+  actionAccessibilityLabel,
+  actionIcon,
+  icon,
+  onActionPress,
+  onPress,
+  stats,
+  subtitle,
+  title,
+}: ActivityHighlightCardProps) {
+  return (
     <AppCard style={styles.card}>
-      <View style={styles.topRow}>
-        {icon ? (
-          <View style={styles.iconCircle}>
-            <Feather name={icon} size={19} color={colors.charcoal} />
+      <View style={styles.contentRow}>
+        <TouchableOpacity
+          activeOpacity={onPress ? 0.78 : 1}
+          accessibilityLabel={onPress ? `Open ${title}` : undefined}
+          accessibilityRole={onPress ? 'button' : undefined}
+          disabled={!onPress}
+          onPress={onPress}
+          style={styles.mainPressArea}
+        >
+          <View style={styles.topRow}>
+            {icon ? (
+              <View style={styles.iconCircle}>
+                <Feather name={icon} size={19} color={colors.charcoal} />
+              </View>
+            ) : null}
+            <View style={styles.copy}>
+              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            </View>
           </View>
-        ) : null}
-        <View style={styles.copy}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-        </View>
-      </View>
 
-      <View style={styles.statsRow}>
-        {stats.map((stat) => (
-          <View key={`${stat.label}-${stat.value}`} style={styles.stat}>
-            <Text style={styles.statValue}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
+          <View style={styles.statsRow}>
+            {stats.map((stat) => (
+              <View key={`${stat.label}-${stat.value}`} style={styles.stat}>
+                <Text style={styles.statValue}>{stat.value}</Text>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+              </View>
+            ))}
           </View>
-        ))}
+        </TouchableOpacity>
+
+        {onActionPress && actionIcon ? (
+          <TouchableOpacity
+            activeOpacity={0.72}
+            accessibilityLabel={actionAccessibilityLabel ?? `${title} action`}
+            accessibilityRole="button"
+            onPress={onActionPress}
+            style={styles.actionButton}
+          >
+            <Feather name={actionIcon} size={18} color={colors.charcoal} />
+          </TouchableOpacity>
+        ) : null}
       </View>
     </AppCard>
-  );
-
-  if (!onPress) {
-    return content;
-  }
-
-  return (
-    <TouchableOpacity activeOpacity={0.78} accessibilityLabel={`Open ${title}`} accessibilityRole="button" onPress={onPress}>
-      {content}
-    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  actionButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
   card: {
     padding: spacing.lg,
+  },
+  contentRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   copy: {
     flex: 1,
@@ -67,6 +104,9 @@ const styles = StyleSheet.create({
     height: 38,
     justifyContent: 'center',
     width: 38,
+  },
+  mainPressArea: {
+    flex: 1,
   },
   stat: {
     flex: 1,

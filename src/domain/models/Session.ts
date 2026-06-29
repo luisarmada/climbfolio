@@ -40,12 +40,18 @@ export type UpdateSessionInput = {
   description?: string | null;
   endTime?: string | null;
   durationSeconds?: number | null;
+  locationId?: string | null;
+  locationName?: string | null;
+  locationType?: string | null;
   deletedAt?: string | null;
 };
 
 export type SessionMetadataInput = {
   name?: string | null;
   description?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
+  locationType?: string | null;
 };
 
 export type EndSessionInput = SessionMetadataInput & {

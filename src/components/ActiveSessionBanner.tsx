@@ -1,11 +1,14 @@
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'expo-router';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
 import { formatDuration } from '../features/summaries';
 import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
+
+const sharedPulse = new Animated.Value(0);
+let sharedPulseAnimation: ReturnType<typeof Animated.loop> | null = null;
 
 function formatClimbLabel(grade: string, colour: string | null) {
   return colour ? `${grade} | ${colour}` : grade;
@@ -15,7 +18,34 @@ function formatAttemptLabel(attemptCount: number) {
   return `${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}`;
 }
 
-export function ActiveSessionBanner() {
+function ensurePulseAnimation() {
+  if (sharedPulseAnimation) {
+    return;
+  }
+
+  sharedPulseAnimation = Animated.loop(
+    Animated.sequence([
+      Animated.timing(sharedPulse, {
+        duration: 900,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+      Animated.timing(sharedPulse, {
+        duration: 900,
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+    ]),
+  );
+
+  sharedPulseAnimation.start();
+}
+
+type ActiveSessionBannerProps = {
+  onLogClimb: () => void;
+};
+
+export function ActiveSessionBanner({ onLogClimb }: ActiveSessionBannerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
@@ -23,30 +53,12 @@ export function ActiveSessionBanner() {
   const addAttempt = useActiveSessionStore((state) => state.addAttempt);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
   const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
-  const pulse = useRef(new Animated.Value(0)).current;
   const isActiveSessionRoute = pathname.startsWith('/session/active');
-  const canAddAttempt = Boolean(activeClimb) && !isLoading;
+  const canUseQuickAction = !isLoading;
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          duration: 900,
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          duration: 900,
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    animation.start();
-
-    return () => animation.stop();
-  }, [pulse]);
+    ensurePulseAnimation();
+  }, []);
 
   if (!activeSession || isActiveSessionRoute) {
     return null;
@@ -70,13 +82,13 @@ export function ActiveSessionBanner() {
               style={[
                 styles.pulseDot,
                 {
-                  opacity: pulse.interpolate({
+                  opacity: sharedPulse.interpolate({
                     inputRange: [0, 1],
                     outputRange: [0.55, 1],
                   }),
                   transform: [
                     {
-                      scale: pulse.interpolate({
+                      scale: sharedPulse.interpolate({
                         inputRange: [0, 1],
                         outputRange: [0.86, 1.18],
                       }),
@@ -103,14 +115,21 @@ export function ActiveSessionBanner() {
 
       <TouchableOpacity
         activeOpacity={0.78}
-        accessibilityLabel="Add attempt to current climb"
+        accessibilityLabel={activeClimb ? 'Add attempt to current climb' : 'Log a climb'}
         accessibilityRole="button"
-        disabled={!canAddAttempt}
-        onPress={() => void addAttempt()}
-        style={[styles.attemptButton, !canAddAttempt && styles.disabledAttemptButton]}
+        disabled={!canUseQuickAction}
+        onPress={() => {
+          if (activeClimb) {
+            void addAttempt();
+            return;
+          }
+
+          onLogClimb();
+        }}
+        style={[styles.attemptButton, !canUseQuickAction && styles.disabledAttemptButton]}
       >
         <Feather name="plus" size={16} color={colors.charcoal} />
-        <Text style={styles.attemptText}>Attempt</Text>
+        <Text style={styles.attemptText}>{activeClimb ? 'Attempt' : 'Climb'}</Text>
       </TouchableOpacity>
     </View>
   );
