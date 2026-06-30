@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Animated, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useAppShellTransition } from '../components/AppShell';
 import { SessionDiscardSection } from '../components/SessionDiscardSection';
 import { SessionLiveStatsRow } from '../components/SessionLiveStatsRow';
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -12,6 +13,7 @@ import { getDefaultSessionName, useActiveSessionStore } from '../features/sessio
 import { formatSessionDate, formatSessionTime } from '../features/summaries';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { getMainFeature } from '../components/HoldIcon';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 type EndSessionMode = 'default' | 'sent' | 'anotherTime' | 'discard';
 
@@ -30,8 +32,7 @@ function formatSessionDurationWords(totalSeconds: number) {
 
 export function SessionFinishScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const entryProgress = useRef(new Animated.Value(1)).current;
+  const { goBackWithTransition } = useAppShellTransition();
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const activeSession = useActiveSessionStore((state) => state.activeSession);
   const discardActiveClimb = useActiveSessionStore((state) => state.discardActiveClimb);
@@ -53,16 +54,6 @@ export function SessionFinishScreen() {
     name: '',
   });
   const [defaultSessionNamePreview, setDefaultSessionNamePreview] = useState(getDefaultSessionName());
-
-  useEffect(() => {
-    entryProgress.setValue(1);
-    Animated.timing(entryProgress, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
-  }, [entryProgress]);
 
   useEffect(() => {
     let isMounted = true;
@@ -145,30 +136,20 @@ export function SessionFinishScreen() {
   }
 
   function returnToActiveSession() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/session/active');
+    goBackWithTransition('/session/active');
   }
 
   if (!activeSession) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.title}>Finalise session</Text>
+        <Text style={styles.title}>Finalise Session</Text>
         <Text style={styles.subtitle}>{hasRestoreSettled ? 'No active session was found.' : 'Loading active session...'}</Text>
       </View>
     );
   }
 
-  const entryTranslateX = entryProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, width],
-  });
-
   return (
-    <Animated.View style={[styles.screen, { transform: [{ translateX: entryTranslateX }] }]}>
+    <View style={styles.screen}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
           <TouchableOpacity
@@ -180,7 +161,7 @@ export function SessionFinishScreen() {
           >
             <Feather name="chevron-left" size={22} color={colors.charcoal} />
             <View>
-              <Text style={styles.title}>Finalise session</Text>
+              <Text style={styles.title}>Finalise Session</Text>
             </View>
           </TouchableOpacity>
           <AppButton
@@ -206,7 +187,8 @@ export function SessionFinishScreen() {
           <Text style={styles.hint}>Leave the name blank to use {defaultSessionNamePreview}.</Text>
           <TextInput
             accessibilityLabel="Session name"
-            onChangeText={(name) => setSessionFinalizationDraft((draft) => ({ ...draft, name }))}
+            maxLength={inputLimits.sessionName}
+            onChangeText={(name) => setSessionFinalizationDraft((draft) => ({ ...draft, name: limitInput(name, inputLimits.sessionName) }))}
             placeholder="Session name"
             placeholderTextColor={colors.muted}
             style={styles.textInput}
@@ -214,8 +196,14 @@ export function SessionFinishScreen() {
           />
           <TextInput
             accessibilityLabel="Session description"
+            maxLength={inputLimits.sessionDescription}
             multiline
-            onChangeText={(description) => setSessionFinalizationDraft((draft) => ({ ...draft, description }))}
+            onChangeText={(description) =>
+              setSessionFinalizationDraft((draft) => ({
+                ...draft,
+                description: limitInput(description, inputLimits.sessionDescription),
+              }))
+            }
             placeholder="How did the session go? Add notes, beta, highlights, or anything worth remembering."
             placeholderTextColor={colors.muted}
             style={[styles.textInput, styles.descriptionInput]}
@@ -273,7 +261,7 @@ export function SessionFinishScreen() {
 
         <SessionDiscardSection disabled={isLoading} display="text" onDiscard={handleDiscardSession} style={styles.discardTextButton} />
     </ScrollView>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -386,10 +374,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   title: {
-    ...typography.h2,
+    ...typography.compactTitle,
     color: colors.charcoal,
-    fontSize: 24,
-    lineHeight: 29,
   },
   topRow: {
     alignItems: 'center',

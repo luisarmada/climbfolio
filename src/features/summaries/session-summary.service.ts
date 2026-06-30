@@ -1,7 +1,7 @@
 import { attemptRepository, climbRepository, sessionRepository } from '../../data/repositories';
 import { Attempt, Climb, Session } from '../../domain/models';
-import { getGradeVRank, vScaleVGradeRanges } from '../../domain/gradeScales';
-import { normalizeFeature, warmUpHoldType } from '../climbs';
+import { GradingScaleSnapshot, getGradeVRank } from '../../domain/gradeScales';
+import { getClimbScaleSnapshot, normalizeFeature, warmUpHoldType } from '../climbs';
 
 export type SessionSummary = {
   session: Session;
@@ -43,14 +43,16 @@ export type CalendarStats = {
   weeklyStreak: number;
 };
 
-function highestGrade(climbs: Climb[], scale = { gradingScaleVGradeRanges: vScaleVGradeRanges }) {
-  return climbs.reduce<string | null>((highest, climb) => {
-    if (!highest || getGradeVRank(climb.grade, scale) > getGradeVRank(highest, scale)) {
-      return climb.grade;
+function highestGrade(entries: { climb: Climb; scale: Pick<GradingScaleSnapshot, 'gradingScaleVGradeRanges'> }[]) {
+  return entries.reduce<{ grade: string; rank: number } | null>((highest, entry) => {
+    const rank = getGradeVRank(entry.climb.grade, entry.scale);
+
+    if (!highest || rank > highest.rank) {
+      return { grade: entry.climb.grade, rank };
     }
 
     return highest;
-  }, null);
+  }, null)?.grade ?? null;
 }
 
 function average(values: number[]) {
@@ -89,6 +91,10 @@ function splitColours(colour: string | null) {
 export function summarizeAggregate(summaries: SessionSummary[]): AggregateStats {
   const climbs = summaries.flatMap((summary) => summary.climbs);
   const completed = climbs.filter((climb) => climb.completed);
+  const climbEntries = summaries.flatMap((summary) =>
+    summary.climbs.map((climb) => ({ climb, scale: getClimbScaleSnapshot(climb, summary.session) })),
+  );
+  const completedEntries = climbEntries.filter((entry) => entry.climb.completed);
   const totalAttempts = summaries.reduce((total, summary) => total + summary.totalAttempts, 0);
   const sessionDurations = summaries
     .map((summary) => summary.session.durationSeconds)
@@ -104,8 +110,8 @@ export function summarizeAggregate(summaries: SessionSummary[]): AggregateStats 
     averageSessionDurationSeconds: average(sessionDurations),
     completedClimbs: completed.length,
     completionRate: climbs.length === 0 ? 0 : Math.round((completed.length / climbs.length) * 100),
-    highestGradeAttempted: highestGrade(climbs),
-    highestGradeCompleted: highestGrade(completed),
+    highestGradeAttempted: highestGrade(climbEntries),
+    highestGradeCompleted: highestGrade(completedEntries),
     mostClimbedGrade: mostCommon(climbs.map((climb) => climb.grade)),
     mostCommonColour: mostCommon(colours),
     mostCommonHoldType: mostCommon(holdTypes),
@@ -152,6 +158,10 @@ export function calculateWeeklyStreak(summaries: SessionSummary[], date = new Da
   );
   let cursor = startOfWeek(date);
   let streak = 0;
+
+  if (!activeWeeks.has(weekKey(cursor))) {
+    cursor.setDate(cursor.getDate() - 7);
+  }
 
   while (activeWeeks.has(weekKey(cursor))) {
     streak += 1;
@@ -215,6 +225,8 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
   const attemptsByClimb = await Promise.all(climbs.map((climb) => attemptRepository.listByClimbId(climb.id)));
   const attempts = attemptsByClimb.flat();
   const completed = climbs.filter((climb) => climb.completed);
+  const climbEntries = climbs.map((climb) => ({ climb, scale: getClimbScaleSnapshot(climb, session) }));
+  const completedEntries = climbEntries.filter((entry) => entry.climb.completed);
   const restBetweenAttempts = attempts
     .map((attempt) => attempt.restSincePreviousAttemptSeconds)
     .filter((seconds): seconds is number => seconds != null);
@@ -236,8 +248,8 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
     averageRestBetweenClimbsSeconds: average(restBetweenClimbs),
     completedClimbs: completed.length,
     completionRate: climbs.length === 0 ? 0 : Math.round((completed.length / climbs.length) * 100),
-    highestGradeAttempted: highestGrade(climbs, session),
-    highestGradeCompleted: highestGrade(completed, session),
+    highestGradeAttempted: highestGrade(climbEntries),
+    highestGradeCompleted: highestGrade(completedEntries),
     mostCommonColour: mostCommon(colours),
     mostCommonHoldType: mostCommon(holdTypes),
     totalAttempts,

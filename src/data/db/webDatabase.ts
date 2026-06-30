@@ -24,6 +24,11 @@ type ClimbRow = {
   id: string;
   session_id: string;
   grade: string;
+  grading_scale_grades_json?: string;
+  grading_scale_is_tape?: number;
+  grading_scale_name?: string;
+  grading_scale_type?: string;
+  grading_scale_v_ranges_json?: string;
   colour: string | null;
   hold_types_json: string;
   start_time: string;
@@ -53,6 +58,7 @@ type UserProfileRow = {
   display_name: string;
   climber_type: string;
   badge_preference: string;
+  profile_picture_uri?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -109,8 +115,16 @@ function createEmptyState(): WebDatabaseState {
   };
 }
 
+function cloneState(state: WebDatabaseState): WebDatabaseState {
+  return JSON.parse(JSON.stringify(state)) as WebDatabaseState;
+}
+
 function normalizeSql(sql: string) {
   return sql.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function createConstraintError(message: string) {
+  return new Error(`SQLITE_CONSTRAINT: ${message}`);
 }
 
 function readState(): WebDatabaseState {
@@ -135,6 +149,11 @@ function readState(): WebDatabaseState {
       ...state,
       climbs: state.climbs.map((climb) => ({
         ...climb,
+        grading_scale_grades_json: climb.grading_scale_grades_json ?? '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+        grading_scale_is_tape: climb.grading_scale_is_tape ?? 0,
+        grading_scale_name: climb.grading_scale_name ?? 'V Scale',
+        grading_scale_type: climb.grading_scale_type ?? 'v_scale',
+        grading_scale_v_ranges_json: climb.grading_scale_v_ranges_json ?? '{}',
         sort_order: climb.sort_order ?? Date.parse(climb.start_time),
       })),
       climbingPreferences: (state.climbingPreferences ?? []).map((preferences) => ({
@@ -142,7 +161,10 @@ function readState(): WebDatabaseState {
         custom_scales_json: preferences.custom_scales_json ?? '[]',
         selected_grading_scale_id: preferences.selected_grading_scale_id ?? preferences.grading_scale_type ?? 'v_scale',
       })),
-      profiles: state.profiles ?? [],
+      profiles: (state.profiles ?? []).map((profile) => ({
+        ...profile,
+        profile_picture_uri: profile.profile_picture_uri ?? null,
+      })),
       locations: state.locations ?? [],
       sessions: (state.sessions ?? []).map((session) => ({
         ...session,
@@ -180,6 +202,43 @@ function sortByAsc<T>(items: T[], select: (item: T) => string | null) {
 
 class WebDatabase implements DatabaseClient {
   private state = readState();
+  private transactionQueue: Promise<void> = Promise.resolve();
+
+  private assertActiveSessionAllowed(sessionId: string) {
+    if (this.state.sessions.some((session) => session.id !== sessionId && session.end_time === null && session.deleted_at === null)) {
+      throw createConstraintError('unique active session');
+    }
+  }
+
+  private assertActiveClimbAllowed(climbId: string, sessionId: string) {
+    if (
+      this.state.climbs.some(
+        (climb) =>
+          climb.id !== climbId &&
+          climb.session_id === sessionId &&
+          climb.end_time === null &&
+          climb.deleted_at === null,
+      )
+    ) {
+      throw createConstraintError('unique active climb per session');
+    }
+  }
+
+  private insertSession(row: SessionRow) {
+    if (row.end_time === null && row.deleted_at === null) {
+      this.assertActiveSessionAllowed(row.id);
+    }
+
+    this.state.sessions.push(row);
+  }
+
+  private insertClimb(row: ClimbRow) {
+    if (row.end_time === null && row.deleted_at === null) {
+      this.assertActiveClimbAllowed(row.id, row.session_id);
+    }
+
+    this.state.climbs.push(row);
+  }
 
   async execAsync() {
     writeState(this.state);
@@ -218,7 +277,7 @@ class WebDatabase implements DatabaseClient {
           updatedAt,
           deletedAt,
         ] = params;
-        this.state.sessions.push({
+        this.insertSession({
           id: String(id),
           name: name == null ? null : String(name),
           description: description == null ? null : String(description),
@@ -298,7 +357,7 @@ class WebDatabase implements DatabaseClient {
         : hasGradingScale
           ? maybeGradingScaleRangesJsonOrCreatedAt
           : maybeGradingScaleTypeOrGradesJson;
-      this.state.sessions.push({
+      this.insertSession({
         id: String(id),
         name: name == null ? null : String(name),
         description: description == null ? null : String(description),
@@ -321,14 +380,20 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into user_profile')) {
-      const [id, displayName, climberType, badgePreference, createdAt, updatedAt, deletedAt] = params;
+      const [id, displayName, tagline, badgePreference, maybeProfilePictureUriOrCreatedAt, maybeCreatedAtOrUpdatedAt, maybeUpdatedAtOrDeletedAt, maybeDeletedAt] = params;
+      const hasProfilePictureUri = params.length === 8;
+      const profilePictureUri = hasProfilePictureUri ? maybeProfilePictureUriOrCreatedAt : null;
+      const createdAt = hasProfilePictureUri ? maybeCreatedAtOrUpdatedAt : maybeProfilePictureUriOrCreatedAt;
+      const updatedAt = hasProfilePictureUri ? maybeUpdatedAtOrDeletedAt : maybeCreatedAtOrUpdatedAt;
+      const deletedAt = hasProfilePictureUri ? maybeDeletedAt : maybeUpdatedAtOrDeletedAt;
       this.state.profiles.push({
         id: String(id),
         badge_preference: String(badgePreference),
-        climber_type: String(climberType),
+        climber_type: String(tagline),
         created_at: String(createdAt),
         deleted_at: deletedAt == null ? null : String(deletedAt),
         display_name: String(displayName),
+        profile_picture_uri: profilePictureUri == null ? null : String(profilePictureUri),
         updated_at: String(updatedAt),
       });
       writeState(this.state);
@@ -456,14 +521,19 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update user_profile')) {
-      const [displayName, climberType, badgePreference, updatedAt, id] = params;
+      const [displayName, tagline, badgePreference, maybeProfilePictureUriOrUpdatedAt, maybeUpdatedAtOrId, maybeId] = params;
+      const hasProfilePictureUri = params.length === 6;
+      const profilePictureUri = hasProfilePictureUri ? maybeProfilePictureUriOrUpdatedAt : undefined;
+      const updatedAt = hasProfilePictureUri ? maybeUpdatedAtOrId : maybeProfilePictureUriOrUpdatedAt;
+      const id = hasProfilePictureUri ? maybeId : maybeUpdatedAtOrId;
       this.state.profiles = this.state.profiles.map((profile) =>
         profile.id === id
           ? {
               ...profile,
               badge_preference: String(badgePreference),
-              climber_type: String(climberType),
+              climber_type: String(tagline),
               display_name: String(displayName),
+              profile_picture_uri: hasProfilePictureUri ? (profilePictureUri == null ? null : String(profilePictureUri)) : profile.profile_picture_uri,
               updated_at: String(updatedAt),
             }
           : profile,
@@ -473,23 +543,37 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update sessions')) {
-      const [maybeNameOrEndTime, maybeDescriptionOrDurationSeconds, maybeEndTimeOrDeletedAt, maybeDurationSecondsOrUpdatedAt, maybeDeletedAtOrId, maybeUpdatedAt, maybeId] = params;
-      const hasMetadata = params.length === 7;
+      const hasLocationMetadata = params.length === 10;
+      const hasMetadata = params.length === 7 || hasLocationMetadata;
+      const [maybeNameOrEndTime, maybeDescriptionOrDurationSeconds, maybeEndTimeOrDeletedAt, maybeDurationSecondsOrLocationId, maybeLocationIdOrDeletedAt, maybeLocationNameOrUpdatedAt, maybeLocationTypeOrId, maybeDeletedAt, maybeUpdatedAt, maybeId] = params;
       const name = hasMetadata ? maybeNameOrEndTime : undefined;
       const description = hasMetadata ? maybeDescriptionOrDurationSeconds : undefined;
       const endTime = hasMetadata ? maybeEndTimeOrDeletedAt : maybeNameOrEndTime;
-      const durationSeconds = hasMetadata ? maybeDurationSecondsOrUpdatedAt : maybeDescriptionOrDurationSeconds;
-      const deletedAt = hasMetadata ? maybeDeletedAtOrId : maybeEndTimeOrDeletedAt;
-      const updatedAt = hasMetadata ? maybeUpdatedAt : maybeDurationSecondsOrUpdatedAt;
-      const id = hasMetadata ? maybeId : maybeDeletedAtOrId;
+      const durationSeconds = hasMetadata ? maybeDurationSecondsOrLocationId : maybeDescriptionOrDurationSeconds;
+      const locationId = hasLocationMetadata ? maybeLocationIdOrDeletedAt : undefined;
+      const locationName = hasLocationMetadata ? maybeLocationNameOrUpdatedAt : undefined;
+      const locationType = hasLocationMetadata ? maybeLocationTypeOrId : undefined;
+      const deletedAt = hasLocationMetadata ? maybeDeletedAt : hasMetadata ? maybeLocationIdOrDeletedAt : maybeEndTimeOrDeletedAt;
+      const updatedAt = hasLocationMetadata ? maybeUpdatedAt : hasMetadata ? maybeLocationNameOrUpdatedAt : maybeDurationSecondsOrLocationId;
+      const id = hasLocationMetadata ? maybeId : hasMetadata ? maybeLocationTypeOrId : maybeLocationIdOrDeletedAt;
+      const nextEndTime = endTime == null ? null : String(endTime);
+      const nextDeletedAt = deletedAt == null ? null : String(deletedAt);
+
+      if (nextEndTime === null && nextDeletedAt === null) {
+        this.assertActiveSessionAllowed(String(id));
+      }
+
       this.state.sessions = this.state.sessions.map((session) =>
         session.id === id
           ? {
               ...session,
-              deleted_at: deletedAt == null ? null : String(deletedAt),
+              deleted_at: nextDeletedAt,
               description: hasMetadata ? (description == null ? null : String(description)) : session.description,
               duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
-              end_time: endTime == null ? null : String(endTime),
+              end_time: nextEndTime,
+              location_id: hasLocationMetadata ? (locationId == null ? null : String(locationId)) : session.location_id,
+              location_name: hasLocationMetadata ? (locationName == null ? null : String(locationName)) : session.location_name,
+              location_type: hasLocationMetadata ? (locationType == null ? null : String(locationType)) : session.location_type,
               name: hasMetadata ? (name == null ? null : String(name)) : session.name,
               updated_at: String(updatedAt),
             }
@@ -500,27 +584,57 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into climbs')) {
+      const hasClimbScale = params.length === 20;
       const [
         id,
         sessionId,
         grade,
-        colour,
-        holdTypesJson,
-        startTime,
-        endTime,
-        durationSeconds,
-        attemptCount,
-        completed,
-        restBeforeClimbSeconds,
-        sortOrder,
-        createdAt,
-        updatedAt,
-        deletedAt,
+        maybeGradingScaleTypeOrColour,
+        maybeGradingScaleNameOrHoldTypesJson,
+        maybeGradingScaleGradesJsonOrStartTime,
+        maybeGradingScaleIsTapeOrEndTime,
+        maybeGradingScaleRangesJsonOrDurationSeconds,
+        maybeColourOrAttemptCount,
+        maybeHoldTypesJsonOrCompleted,
+        maybeStartTimeOrRestBeforeClimbSeconds,
+        maybeEndTimeOrSortOrder,
+        maybeDurationSecondsOrCreatedAt,
+        maybeAttemptCountOrUpdatedAt,
+        maybeCompletedOrDeletedAt,
+        maybeRestBeforeClimbSeconds,
+        maybeSortOrder,
+        maybeCreatedAt,
+        maybeUpdatedAt,
+        maybeDeletedAt,
       ] = params;
-      this.state.climbs.push({
+      const gradingScaleType = hasClimbScale ? maybeGradingScaleTypeOrColour : 'v_scale';
+      const gradingScaleName = hasClimbScale ? maybeGradingScaleNameOrHoldTypesJson : 'V Scale';
+      const gradingScaleGradesJson = hasClimbScale
+        ? maybeGradingScaleGradesJsonOrStartTime
+        : '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]';
+      const gradingScaleIsTape = hasClimbScale ? maybeGradingScaleIsTapeOrEndTime : 0;
+      const gradingScaleRangesJson = hasClimbScale ? maybeGradingScaleRangesJsonOrDurationSeconds : '{}';
+      const colour = hasClimbScale ? maybeColourOrAttemptCount : maybeGradingScaleTypeOrColour;
+      const holdTypesJson = hasClimbScale ? maybeHoldTypesJsonOrCompleted : maybeGradingScaleNameOrHoldTypesJson;
+      const startTime = hasClimbScale ? maybeStartTimeOrRestBeforeClimbSeconds : maybeGradingScaleGradesJsonOrStartTime;
+      const endTime = hasClimbScale ? maybeEndTimeOrSortOrder : maybeGradingScaleIsTapeOrEndTime;
+      const durationSeconds = hasClimbScale ? maybeDurationSecondsOrCreatedAt : maybeGradingScaleRangesJsonOrDurationSeconds;
+      const attemptCount = hasClimbScale ? maybeAttemptCountOrUpdatedAt : maybeColourOrAttemptCount;
+      const completed = hasClimbScale ? maybeCompletedOrDeletedAt : maybeHoldTypesJsonOrCompleted;
+      const restBeforeClimbSeconds = hasClimbScale ? maybeRestBeforeClimbSeconds : maybeStartTimeOrRestBeforeClimbSeconds;
+      const sortOrder = hasClimbScale ? maybeSortOrder : maybeEndTimeOrSortOrder;
+      const createdAt = hasClimbScale ? maybeCreatedAt : maybeDurationSecondsOrCreatedAt;
+      const updatedAt = hasClimbScale ? maybeUpdatedAt : maybeAttemptCountOrUpdatedAt;
+      const deletedAt = hasClimbScale ? maybeDeletedAt : maybeCompletedOrDeletedAt;
+      this.insertClimb({
         id: String(id),
         session_id: String(sessionId),
         grade: String(grade),
+        grading_scale_grades_json: String(gradingScaleGradesJson),
+        grading_scale_is_tape: Number(gradingScaleIsTape),
+        grading_scale_name: String(gradingScaleName),
+        grading_scale_type: String(gradingScaleType),
+        grading_scale_v_ranges_json: String(gradingScaleRangesJson),
         colour: colour == null ? null : String(colour),
         hold_types_json: String(holdTypesJson),
         start_time: String(startTime),
@@ -550,25 +664,38 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update climbs')) {
-      const [
-        grade,
-        colour,
-        holdTypesJson,
-        endTime,
-        durationSeconds,
-        attemptCount,
-        completed,
-        restBeforeClimbSeconds,
-        sortOrderOrDeletedAt,
-        deletedAtOrUpdatedAt,
-        updatedAtOrId,
-        maybeId,
-      ] = params;
-      const hasSortOrder = params.length === 12;
+      const hasClimbScale = params.length === 17;
+      const hasSortOrder = params.length === 12 || params.length === 17;
+      const grade = params[0];
+      const gradingScaleType = hasClimbScale ? params[1] : undefined;
+      const gradingScaleName = hasClimbScale ? params[2] : undefined;
+      const gradingScaleGradesJson = hasClimbScale ? params[3] : undefined;
+      const gradingScaleIsTape = hasClimbScale ? params[4] : undefined;
+      const gradingScaleRangesJson = hasClimbScale ? params[5] : undefined;
+      const offset = hasClimbScale ? 6 : 1;
+      const colour = params[offset];
+      const holdTypesJson = params[offset + 1];
+      const endTime = params[offset + 2];
+      const durationSeconds = params[offset + 3];
+      const attemptCount = params[offset + 4];
+      const completed = params[offset + 5];
+      const restBeforeClimbSeconds = params[offset + 6];
+      const sortOrderOrDeletedAt = params[offset + 7];
+      const deletedAtOrUpdatedAt = params[offset + 8];
+      const updatedAtOrId = params[offset + 9];
+      const maybeId = params[offset + 10];
       const sortOrder = hasSortOrder ? sortOrderOrDeletedAt : undefined;
       const deletedAt = hasSortOrder ? deletedAtOrUpdatedAt : sortOrderOrDeletedAt;
       const updatedAt = hasSortOrder ? updatedAtOrId : deletedAtOrUpdatedAt;
       const id = hasSortOrder ? maybeId : updatedAtOrId;
+      const currentClimb = this.state.climbs.find((climb) => climb.id === id);
+      const nextEndTime = endTime == null ? null : String(endTime);
+      const nextDeletedAt = deletedAt == null ? null : String(deletedAt);
+
+      if (currentClimb && nextEndTime === null && nextDeletedAt === null) {
+        this.assertActiveClimbAllowed(String(id), currentClimb.session_id);
+      }
+
       this.state.climbs = this.state.climbs.map((climb) =>
         climb.id === id
           ? {
@@ -576,10 +703,15 @@ class WebDatabase implements DatabaseClient {
               attempt_count: Number(attemptCount),
               colour: colour == null ? null : String(colour),
               completed: Number(completed),
-              deleted_at: deletedAt == null ? null : String(deletedAt),
+              deleted_at: nextDeletedAt,
               duration_seconds: durationSeconds == null ? null : Number(durationSeconds),
-              end_time: endTime == null ? null : String(endTime),
+              end_time: nextEndTime,
               grade: String(grade),
+              grading_scale_grades_json: hasClimbScale ? String(gradingScaleGradesJson) : climb.grading_scale_grades_json,
+              grading_scale_is_tape: hasClimbScale ? Number(gradingScaleIsTape) : climb.grading_scale_is_tape,
+              grading_scale_name: hasClimbScale ? String(gradingScaleName) : climb.grading_scale_name,
+              grading_scale_type: hasClimbScale ? String(gradingScaleType) : climb.grading_scale_type,
+              grading_scale_v_ranges_json: hasClimbScale ? String(gradingScaleRangesJson) : climb.grading_scale_v_ranges_json,
               hold_types_json: String(holdTypesJson),
               rest_before_climb_seconds: restBeforeClimbSeconds == null ? null : Number(restBeforeClimbSeconds),
               sort_order: sortOrder == null ? climb.sort_order : Number(sortOrder),
@@ -743,8 +875,25 @@ class WebDatabase implements DatabaseClient {
   }
 
   async withTransactionAsync(task: () => Promise<void>) {
-    await task();
-    writeState(this.state);
+    const runTransaction = async () => {
+      const previousState = cloneState(this.state);
+
+      try {
+        await task();
+        writeState(this.state);
+      } catch (error) {
+        this.state = previousState;
+        writeState(this.state);
+        throw error;
+      }
+    };
+    const transaction = this.transactionQueue.then(runTransaction, runTransaction);
+    this.transactionQueue = transaction.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return transaction;
   }
 }
 
@@ -756,4 +905,13 @@ export function getWebDatabase() {
   }
 
   return webDatabase;
+}
+
+export function resetWebDatabaseForTests() {
+  webDatabase = null;
+
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(legacyStorageKey);
+  }
 }

@@ -1,17 +1,20 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { formatProfileBadge, useProfileStore } from '../features/profile';
 import { calculateWeeklyStreak, SessionSummary, sessionSummaryService, summarizeAggregate } from '../features/summaries';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 export function ProfileSettingsScreen() {
+  const { goBackWithTransition } = useProfileReturnTransition();
   const router = useRouter();
   const climbingPreferences = useClimbingPreferencesStore((state) => state.preferences);
   const loadClimbingPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
@@ -21,7 +24,7 @@ export function ProfileSettingsScreen() {
   const isLoading = useProfileStore((state) => state.isLoading);
   const error = useProfileStore((state) => state.error);
   const [displayName, setDisplayName] = useState('Local Climber');
-  const [climberType, setClimberType] = useState('Indoor boulderer');
+  const [tagline, setTagline] = useState('Indoor boulderer');
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
 
@@ -37,7 +40,7 @@ export function ProfileSettingsScreen() {
 
       if (isMounted) {
         setDisplayName(nextProfile.displayName);
-        setClimberType(nextProfile.climberType);
+        setTagline(nextProfile.tagline);
         setSummaries(nextSummaries);
       }
     }
@@ -55,15 +58,15 @@ export function ProfileSettingsScreen() {
     }
 
     setDisplayName(profile.displayName);
-    setClimberType(profile.climberType);
+    setTagline(profile.tagline);
   }, [profile]);
 
   async function handleSave() {
-    await updateProfile({ badgePreference: 'best_grade', climberType, displayName });
+    await updateProfile({ badgePreference: 'best_grade', displayName, tagline });
     setSavedMessage('Saved locally');
   }
 
-  const canSave = displayName.trim().length > 0 && climberType.trim().length > 0 && !isLoading;
+  const canSave = displayName.trim().length > 0 && tagline.trim().length > 0 && !isLoading;
   const aggregateStats = summarizeAggregate(summaries);
   const weeklyStreak = calculateWeeklyStreak(summaries);
   const selectedScale = resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' });
@@ -76,7 +79,7 @@ export function ProfileSettingsScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/settings')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -88,8 +91,10 @@ export function ProfileSettingsScreen() {
 
       <ProfileAccountCard
         badgeText={badgeText}
-        climberType={climberType.trim() || 'Indoor boulderer'}
         displayName={displayName.trim() || 'Local Climber'}
+        onProfilePicturePress={() => router.push('/settings/profile-picture')}
+        profilePictureAccessibilityLabel="Choose profile picture"
+        profilePictureId={profile?.profilePictureId}
         stats={[
           { label: 'Sessions', value: String(aggregateStats.sessions) },
           { label: 'Followers', value: '0' },
@@ -97,6 +102,7 @@ export function ProfileSettingsScreen() {
         ]}
         streakCount={weeklyStreak}
         style={styles.previewCard}
+        tagline={tagline.trim() || 'Indoor boulderer'}
       />
 
       <View style={styles.section}>
@@ -106,24 +112,24 @@ export function ProfileSettingsScreen() {
           <TextInput
             accessibilityLabel="Display name"
             autoCapitalize="words"
-            maxLength={32}
-            onChangeText={setDisplayName}
+            maxLength={inputLimits.profileDisplayName}
+            onChangeText={(name) => setDisplayName(limitInput(name, inputLimits.profileDisplayName))}
             placeholder="Local Climber"
             placeholderTextColor={colors.muted}
             style={styles.input}
             value={displayName}
           />
 
-          <Text style={[styles.inputLabel, styles.nextInputLabel]}>Climber type</Text>
+          <Text style={[styles.inputLabel, styles.nextInputLabel]}>Tagline</Text>
           <TextInput
-            accessibilityLabel="Climber type"
+            accessibilityLabel="Tagline"
             autoCapitalize="sentences"
-            maxLength={40}
-            onChangeText={setClimberType}
+            maxLength={inputLimits.profileTagline}
+            onChangeText={(nextTagline) => setTagline(limitInput(nextTagline, inputLimits.profileTagline))}
             placeholder="Indoor boulderer"
             placeholderTextColor={colors.muted}
             style={styles.input}
-            value={climberType}
+            value={tagline}
           />
         </AppCard>
       </View>
@@ -210,7 +216,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxl,
   },
   sectionTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
     marginBottom: spacing.md,
   },

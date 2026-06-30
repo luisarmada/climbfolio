@@ -55,27 +55,29 @@ export const locationRepository: LocationRepository = {
       updatedAt: timestamp,
     };
 
-    if (location.isSelected) {
-      await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
-    }
+    await database.withTransactionAsync(async () => {
+      if (location.isSelected) {
+        await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
+      }
 
-    await database.runAsync(
-      `
-        INSERT INTO climbing_locations (
-          id, name, type, grading_scale_id, is_selected, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-      `,
-      [
-        location.id,
-        location.name,
-        location.type,
-        location.gradingScaleId,
-        location.isSelected ? 1 : 0,
-        location.createdAt,
-        location.updatedAt,
-        location.deletedAt,
-      ],
-    );
+      await database.runAsync(
+        `
+          INSERT INTO climbing_locations (
+            id, name, type, grading_scale_id, is_selected, created_at, updated_at, deleted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        `,
+        [
+          location.id,
+          location.name,
+          location.type,
+          location.gradingScaleId,
+          location.isSelected ? 1 : 0,
+          location.createdAt,
+          location.updatedAt,
+          location.deletedAt,
+        ],
+      );
+    });
 
     return location;
   },
@@ -110,16 +112,22 @@ export const locationRepository: LocationRepository = {
   async select(locationId) {
     const database = await initializeDatabase();
 
-    await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
+    await database.withTransactionAsync(async () => {
+      await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
+
+      if (!locationId) {
+        return;
+      }
+
+      await database.runAsync('UPDATE climbing_locations SET is_selected = 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL;', [
+        nowIso(),
+        locationId,
+      ]);
+    });
 
     if (!locationId) {
       return null;
     }
-
-    await database.runAsync('UPDATE climbing_locations SET is_selected = 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL;', [
-      nowIso(),
-      locationId,
-    ]);
 
     return locationRepository.getSelected();
   },
@@ -144,18 +152,20 @@ export const locationRepository: LocationRepository = {
       updatedAt: nowIso(),
     };
 
-    if (next.isSelected) {
-      await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
-    }
+    await database.withTransactionAsync(async () => {
+      if (next.isSelected) {
+        await database.runAsync('UPDATE climbing_locations SET is_selected = 0 WHERE deleted_at IS NULL;');
+      }
 
-    await database.runAsync(
-      `
-        UPDATE climbing_locations
-        SET name = ?, type = ?, grading_scale_id = ?, is_selected = ?, deleted_at = ?, updated_at = ?
-        WHERE id = ?;
-      `,
-      [next.name, next.type, next.gradingScaleId, next.isSelected ? 1 : 0, next.deletedAt, next.updatedAt, next.id],
-    );
+      await database.runAsync(
+        `
+          UPDATE climbing_locations
+          SET name = ?, type = ?, grading_scale_id = ?, is_selected = ?, deleted_at = ?, updated_at = ?
+          WHERE id = ?;
+        `,
+        [next.name, next.type, next.gradingScaleId, next.isSelected ? 1 : 0, next.deletedAt, next.updatedAt, next.id],
+      );
+    });
 
     return next.deletedAt ? null : next;
   },

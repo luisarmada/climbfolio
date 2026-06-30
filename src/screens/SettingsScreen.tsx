@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Href, useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 
 type SettingsRow = {
@@ -20,7 +21,7 @@ const settingsSections: SettingsSection[] = [
     title: 'Account',
     rows: [
       {
-        detail: 'Display name and climber type',
+        detail: 'Display name and tagline',
         href: '/settings/profile',
         label: 'Profile',
       },
@@ -42,13 +43,11 @@ const settingsSections: SettingsSection[] = [
         label: 'Locations',
       },
       { detail: 'Profile visibility, followers, and sharing controls', label: 'Privacy and social' },
-      { detail: 'Move session data in or out of Climb Book', label: 'Export / import data' },
     ],
   },
   {
     title: 'Help',
     rows: [
-      { detail: 'Version, legal, and product information', label: 'About' },
       { detail: 'Questions, feedback, or support', label: 'Contact us' },
       { detail: 'Leave a rating when the app is published', label: 'Review on App Store' },
     ],
@@ -57,17 +56,36 @@ const settingsSections: SettingsSection[] = [
 
 export function SettingsScreen() {
   const router = useRouter();
+  const { returnToProfile } = useProfileReturnTransition();
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topRow}>
-        <TouchableOpacity activeOpacity={0.72} accessibilityLabel="Back to profile" accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity activeOpacity={0.72} accessibilityLabel="Back to profile" accessibilityRole="button" onPress={returnToProfile} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
         </TouchableOpacity>
         <View style={styles.titleBlock}>
           <Text style={styles.title}>Settings</Text>
         </View>
       </View>
+
+      <TouchableOpacity
+        activeOpacity={0.78}
+        accessibilityLabel="Manage subscription"
+        accessibilityRole="button"
+        onPress={() => router.push('/settings/subscription')}
+        style={styles.subscriptionCard}
+      >
+        <View style={styles.subscriptionIcon}>
+          <Feather name="star" size={22} color={colors.charcoal} />
+        </View>
+        <View style={styles.subscriptionCopy}>
+          <Text style={styles.subscriptionEyebrow}>Free plan</Text>
+          <Text style={styles.subscriptionTitle}>Manage Subscription</Text>
+          <Text style={styles.subscriptionDetail}>Preview Premium features and plan status</Text>
+        </View>
+        <Feather name="chevron-right" size={22} color={colors.charcoal} />
+      </TouchableOpacity>
 
       {settingsSections.map((section) => (
         <View key={section.title} style={styles.section}>
@@ -116,6 +134,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
   },
+  subscriptionCard: {
+    alignItems: 'center',
+    backgroundColor: colors.amber,
+    borderColor: 'rgba(30,30,30,0.12)',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+  },
+  subscriptionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionDetail: {
+    color: 'rgba(30,30,30,0.68)',
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  subscriptionEyebrow: {
+    color: 'rgba(30,30,30,0.72)',
+    fontFamily: fonts.extraBold,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textTransform: 'uppercase',
+  },
+  subscriptionIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: radius.pill,
+    height: 46,
+    justifyContent: 'center',
+    width: 46,
+  },
+  subscriptionTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 22,
+    marginTop: 2,
+  },
   eyebrow: {
     color: colors.muted,
     fontFamily: fonts.bold,
@@ -158,7 +223,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   sectionTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
     marginBottom: spacing.md,
   },

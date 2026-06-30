@@ -1,3 +1,5 @@
+import { inputLimits, normalizeSingleLineInput } from '../utils/inputValidation';
+
 export type GradingScaleType = 'v_scale' | 'font' | 'custom';
 
 export type VGradeRange = {
@@ -89,7 +91,7 @@ export function normalizeCustomGrades(grades: string[] | undefined) {
   const seen = new Set<string>();
 
   return (grades ?? [])
-    .map((grade) => grade.trim())
+    .map((grade) => normalizeSingleLineInput(grade, inputLimits.customGradeName))
     .filter((grade) => {
       const key = grade.toLocaleLowerCase();
 
@@ -136,7 +138,7 @@ export function normalizeCustomScales(scales: CustomGradingScale[] | undefined) 
       grades: normalizeCustomGrades(scale.grades),
       id: scale.id.trim(),
       isTape: Boolean(scale.isTape),
-      name: scale.name.trim() || 'Custom scale',
+      name: normalizeSingleLineInput(scale.name, inputLimits.customScaleName) || 'Custom scale',
       vGradeRanges: {},
     }))
     .map((scale) => ({
@@ -175,7 +177,7 @@ export function resolveGradingScale(input: {
       return {
         gradingScaleGrades: customGrades,
         gradingScaleIsTape: false,
-        gradingScaleName: input.customGradingScaleName?.trim() || 'Custom',
+        gradingScaleName: normalizeSingleLineInput(input.customGradingScaleName, inputLimits.customScaleName) || 'Custom',
         gradingScaleType: 'custom',
         gradingScaleVGradeRanges: normalizeCustomScaleRanges(customGrades, undefined),
       };

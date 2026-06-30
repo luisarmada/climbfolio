@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { spacing } from '../design/tokens';
 
 type DismissibleModalProps = {
@@ -11,16 +11,20 @@ type DismissibleModalProps = {
 export function DismissibleModal({ children, onDismiss, visible }: DismissibleModalProps) {
   return (
     <Modal animationType="fade" onRequestClose={onDismiss} transparent visible={visible}>
-      <Pressable accessibilityRole="button" onPress={onDismiss} style={styles.overlay}>
-        <Pressable onPress={(event) => event.stopPropagation()} style={styles.content}>
+      <View style={styles.overlay}>
+        <Pressable accessibilityLabel="Dismiss modal" onPress={onDismiss} style={styles.backdrop} />
+        <View pointerEvents="box-none" style={styles.content}>
           {children}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   content: {
     alignItems: 'center',
     maxHeight: '86%',

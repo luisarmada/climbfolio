@@ -57,6 +57,19 @@ function getStatePatch(activeSession: ActiveSessionState | null) {
   };
 }
 
+function getSessionScaleInput(session: Session): Pick<
+  StartClimbInput,
+  'gradingScaleGrades' | 'gradingScaleIsTape' | 'gradingScaleName' | 'gradingScaleType' | 'gradingScaleVGradeRanges'
+> {
+  return {
+    gradingScaleGrades: session.gradingScaleGrades,
+    gradingScaleIsTape: session.gradingScaleIsTape,
+    gradingScaleName: session.gradingScaleName,
+    gradingScaleType: session.gradingScaleType,
+    gradingScaleVGradeRanges: session.gradingScaleVGradeRanges,
+  };
+}
+
 async function updateLiveActivity(activeSession: ActiveSessionState | null) {
   if (!activeSession || !liveActivityService.isSupported()) {
     return;
@@ -202,7 +215,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
     set({ error: null, isLoading: true });
 
     try {
-      await climbService.startClimb({ ...input, sessionId: session.id });
+      await climbService.startClimb({ ...getSessionScaleInput(session), ...input, sessionId: session.id });
       const activeSession = await sessionService.refreshActiveSession(session.id);
       set({
         ...getStatePatch(activeSession),
@@ -393,7 +406,7 @@ export const useActiveSessionStore = create<ActiveSessionStore>((set, get) => ({
     set({ error: null, isLoading: true });
 
     try {
-      const warmUpClimb = await climbService.logWarmUpClimb({ grade, sessionId: activeSession.id });
+      const warmUpClimb = await climbService.logWarmUpClimb({ ...getSessionScaleInput(activeSession), grade, sessionId: activeSession.id });
       const refreshedSession = await sessionService.refreshActiveSession(activeSession.id);
       set({ ...getStatePatch(refreshedSession), error: null, isLoading: false });
       await hapticsService.notify('selection');

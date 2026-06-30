@@ -1,4 +1,4 @@
-export const schemaVersion = 10;
+export const schemaVersion = 13;
 
 export const createSchemaSql = `
 PRAGMA foreign_keys = ON;
@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS climbs (
   id TEXT PRIMARY KEY NOT NULL,
   session_id TEXT NOT NULL,
   grade TEXT NOT NULL,
+  grading_scale_type TEXT NOT NULL DEFAULT 'v_scale',
+  grading_scale_name TEXT NOT NULL DEFAULT 'V Scale',
+  grading_scale_grades_json TEXT NOT NULL DEFAULT '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]',
+  grading_scale_is_tape INTEGER NOT NULL DEFAULT 0,
+  grading_scale_v_ranges_json TEXT NOT NULL DEFAULT '{}',
   colour TEXT,
   hold_types_json TEXT NOT NULL,
   start_time TEXT NOT NULL,
@@ -63,6 +68,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
   display_name TEXT NOT NULL,
   climber_type TEXT NOT NULL,
   badge_preference TEXT NOT NULL,
+  profile_picture_uri TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT
@@ -97,6 +103,10 @@ CREATE TABLE IF NOT EXISTS climbing_locations (
 CREATE INDEX IF NOT EXISTS idx_sessions_active
   ON sessions(end_time, deleted_at);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active
+  ON sessions(COALESCE(end_time, '__active__'))
+  WHERE end_time IS NULL AND deleted_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_locations_selected
   ON climbing_locations(is_selected, deleted_at);
 
@@ -105,6 +115,10 @@ CREATE INDEX IF NOT EXISTS idx_climbs_session
 
 CREATE INDEX IF NOT EXISTS idx_climbs_active
   ON climbs(session_id, end_time, deleted_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_climbs_one_active_per_session
+  ON climbs(session_id, COALESCE(end_time, '__active__'))
+  WHERE end_time IS NULL AND deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_attempts_climb
   ON attempts(climb_id, attempt_number, deleted_at);

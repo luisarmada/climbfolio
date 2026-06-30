@@ -1,7 +1,10 @@
-import { EndSessionInput, Session } from '../../domain/models';
+import { EndSessionInput, Session, SessionMetadataInput } from '../../domain/models';
+import { withDatabaseTransaction } from '../../data/db/client';
+import { isDatabaseConstraintError } from '../../data/db/errors';
 import { climbRepository, sessionRepository, statsRepository } from '../../data/repositories';
 import { resolveSelectedGradingScale } from '../../domain/gradeScales';
 import { nowIso } from '../../utils/dates';
+import { inputLimits, normalizeMultilineInput, normalizeSingleLineInput } from '../../utils/inputValidation';
 import { climbingPreferencesService } from '../preferences';
 import { locationService } from '../locations';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
@@ -27,39 +30,50 @@ async function toActiveSessionState(session: Session): Promise<ActiveSessionStat
 
 export const sessionService = {
   async startSession(input: { locationId?: string | null } = {}): Promise<ActiveSessionState> {
-    const existingSession = await sessionRepository.getActive();
-    const preferences = existingSession ? null : await climbingPreferencesService.getLocalPreferences();
-    const locations = existingSession ? [] : await locationService.listLocations();
-    const selectedLocation =
-      input.locationId === null
-        ? null
-        : input.locationId
-          ? locations.find((location) => location.id === input.locationId) ?? null
-          : locations.find((location) => location.isSelected) ?? null;
-    const gradingScale = preferences
-      ? resolveSelectedGradingScale({
+    try {
+      return await withDatabaseTransaction(async () => {
+        const existingSession = await sessionRepository.getActive();
+
+        if (existingSession) {
+          return toActiveSessionState(existingSession);
+        }
+
+        const preferences = await climbingPreferencesService.getLocalPreferences();
+        const locations = await locationService.listLocations();
+        const selectedLocation =
+          input.locationId === null
+            ? null
+            : input.locationId
+              ? locations.find((location) => location.id === input.locationId) ?? null
+              : locations.find((location) => location.isSelected) ?? null;
+        const gradingScale = resolveSelectedGradingScale({
           customScales: preferences.customScales,
           selectedGradingScaleId: selectedLocation?.gradingScaleId ?? preferences.selectedGradingScaleId,
-        })
-      : null;
-    const session =
-      existingSession ??
-      (await sessionRepository.create(
-        gradingScale
-          ? {
-              gradingScaleGrades: gradingScale.gradingScaleGrades,
-              gradingScaleIsTape: gradingScale.gradingScaleIsTape,
-              gradingScaleName: gradingScale.gradingScaleName,
-              gradingScaleType: gradingScale.gradingScaleType,
-              gradingScaleVGradeRanges: gradingScale.gradingScaleVGradeRanges,
-              locationId: selectedLocation?.id ?? null,
-              locationName: selectedLocation?.name ?? null,
-              locationType: selectedLocation?.type ?? null,
-            }
-          : undefined,
-      ));
+        });
+        const session = await sessionRepository.create({
+          gradingScaleGrades: gradingScale.gradingScaleGrades,
+          gradingScaleIsTape: gradingScale.gradingScaleIsTape,
+          gradingScaleName: gradingScale.gradingScaleName,
+          gradingScaleType: gradingScale.gradingScaleType,
+          gradingScaleVGradeRanges: gradingScale.gradingScaleVGradeRanges,
+          locationId: selectedLocation?.id ?? null,
+          locationName: selectedLocation?.name ?? null,
+          locationType: selectedLocation?.type ?? null,
+        });
 
-    return toActiveSessionState(session);
+        return toActiveSessionState(session);
+      });
+    } catch (error) {
+      if (isDatabaseConstraintError(error)) {
+        const existingSession = await sessionRepository.getActive();
+
+        if (existingSession) {
+          return toActiveSessionState(existingSession);
+        }
+      }
+
+      throw error;
+    }
   },
 
   async restoreActiveSession(): Promise<ActiveSessionState | null> {
@@ -87,6 +101,24 @@ export const sessionService = {
     const metadata = normalizeSessionMetadata(input, new Date(endTime));
 
     return sessionRepository.end(sessionId, { ...metadata, endTime });
+  },
+
+  async updateSavedSession(sessionId: string, input: SessionMetadataInput): Promise<Session | null> {
+    const name = normalizeSingleLineInput(input.name, inputLimits.sessionName) || null;
+    const description = normalizeMultilineInput(input.description, inputLimits.sessionDescription) || null;
+    const locationName = normalizeSingleLineInput(input.locationName, inputLimits.locationName) || null;
+
+    return sessionRepository.update(sessionId, {
+      description,
+      locationId: locationName ? input.locationId ?? null : null,
+      locationName,
+      locationType: locationName ? input.locationType ?? null : null,
+      name,
+    });
+  },
+
+  async deleteSavedSession(sessionId: string): Promise<Session | null> {
+    return sessionRepository.update(sessionId, { deletedAt: nowIso() });
   },
 
   async discardSession(sessionId: string): Promise<Session | null> {

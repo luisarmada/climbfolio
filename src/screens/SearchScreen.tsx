@@ -1,11 +1,11 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
+import { useAppShellTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 
 export function SearchScreen() {
-  const router = useRouter();
+  const { goBackWithTransition } = useAppShellTransition();
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -14,7 +14,7 @@ export function SearchScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />

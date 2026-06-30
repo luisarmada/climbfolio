@@ -76,7 +76,7 @@ export function StartClimbScreen() {
 
       <AppCard style={styles.section}>
         <Text style={styles.sectionTitle}>Grade</Text>
-        <Text style={styles.sectionHint}>{activeSession?.gradingScaleName ?? 'V Scale'}</Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.sectionHint}>{activeSession?.gradingScaleName ?? 'V Scale'}</Text>
         {isTapeScale ? (
           <View style={styles.tapeGradeGrid}>
             {gradeOptions.map((grade) => {
@@ -98,7 +98,7 @@ export function StartClimbScreen() {
                       { backgroundColor: climbColours.find((climbColour) => climbColour.label === grade)?.value ?? colors.stone },
                     ]}
                   />
-                  <Text style={styles.tapeGradeOptionText}>{grade}</Text>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.tapeGradeOptionText}>{grade}</Text>
                   <Text style={styles.tapeGradeEstimate}>
                     Est. {formatEstimatedVGradeAverage(grade, activeSession ?? { gradingScaleVGradeRanges: {} })}
                   </Text>

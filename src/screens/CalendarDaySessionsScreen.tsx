@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { getSessionDisplayName } from '../features/sessions';
 import {
@@ -35,6 +36,7 @@ function formatSessionCardSubtitle(summary: SessionSummary) {
 
 export function CalendarDaySessionsScreen() {
   const router = useRouter();
+  const { goBackWithTransition } = useProfileReturnTransition();
   const { date } = useLocalSearchParams<{ date: string }>();
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,7 +77,7 @@ export function CalendarDaySessionsScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to calendar"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/calendar')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -102,7 +104,16 @@ export function CalendarDaySessionsScreen() {
         {summaries.map((summary) => (
           <ActivityHighlightCard
             key={summary.session.id}
-            onPress={() => router.push(`/session/${summary.session.id}`)}
+            onPress={() =>
+              router.push({
+                pathname: '/session/[sessionId]',
+                params: {
+                  date: dayKey,
+                  returnTo: 'calendarDay',
+                  sessionId: summary.session.id,
+                },
+              })
+            }
             stats={[
               { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
               { label: 'Climbs', value: String(summary.totalClimbs) },
@@ -167,8 +178,6 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 38,
-    lineHeight: 42,
   },
   titleBlock: {
     flex: 1,

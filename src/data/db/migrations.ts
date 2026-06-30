@@ -129,6 +129,43 @@ export async function runMigrations(database: DatabaseClient) {
       await database.execAsync('CREATE INDEX IF NOT EXISTS idx_locations_selected ON climbing_locations(is_selected, deleted_at);');
     }
 
+    if (currentVersion > 0 && currentVersion < 11) {
+      await database.execAsync(`ALTER TABLE climbs ADD COLUMN grading_scale_type TEXT NOT NULL DEFAULT 'v_scale';`);
+      await database.execAsync(`ALTER TABLE climbs ADD COLUMN grading_scale_name TEXT NOT NULL DEFAULT 'V Scale';`);
+      await database.execAsync(`
+        ALTER TABLE climbs ADD COLUMN grading_scale_grades_json TEXT NOT NULL DEFAULT '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]';
+      `);
+      await database.execAsync(`ALTER TABLE climbs ADD COLUMN grading_scale_is_tape INTEGER NOT NULL DEFAULT 0;`);
+      await database.execAsync(`ALTER TABLE climbs ADD COLUMN grading_scale_v_ranges_json TEXT NOT NULL DEFAULT '{}';`);
+      await database.execAsync(`
+        UPDATE climbs
+        SET
+          grading_scale_type = COALESCE((SELECT sessions.grading_scale_type FROM sessions WHERE sessions.id = climbs.session_id), 'v_scale'),
+          grading_scale_name = COALESCE((SELECT sessions.grading_scale_name FROM sessions WHERE sessions.id = climbs.session_id), 'V Scale'),
+          grading_scale_grades_json = COALESCE((SELECT sessions.grading_scale_grades_json FROM sessions WHERE sessions.id = climbs.session_id), '["VB","V0","V1","V2","V3","V4","V5","V6","V7","V8","V9","V10+"]'),
+          grading_scale_is_tape = COALESCE((SELECT sessions.grading_scale_is_tape FROM sessions WHERE sessions.id = climbs.session_id), 0),
+          grading_scale_v_ranges_json = COALESCE((SELECT sessions.grading_scale_v_ranges_json FROM sessions WHERE sessions.id = climbs.session_id), '{}')
+        WHERE deleted_at IS NULL;
+      `);
+    }
+
+    if (currentVersion > 0 && currentVersion < 12) {
+      await database.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active
+        ON sessions(COALESCE(end_time, '__active__'))
+        WHERE end_time IS NULL AND deleted_at IS NULL;
+      `);
+      await database.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_climbs_one_active_per_session
+        ON climbs(session_id, COALESCE(end_time, '__active__'))
+        WHERE end_time IS NULL AND deleted_at IS NULL;
+      `);
+    }
+
+    if (currentVersion > 0 && currentVersion < 13) {
+      await database.execAsync('ALTER TABLE user_profile ADD COLUMN profile_picture_uri TEXT;');
+    }
+
     await database.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?);',
       [schemaVersion, nowIso()],

@@ -45,8 +45,22 @@ export const fonts = {
 export const typography = {
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 38,
-    lineHeight: 42,
+    fontSize: 34,
+    lineHeight: 39,
+    fontWeight: '800' as const,
+    letterSpacing: 0,
+  },
+  compactTitle: {
+    fontFamily: fonts.extraBold,
+    fontSize: 28,
+    lineHeight: 33,
+    fontWeight: '800' as const,
+    letterSpacing: 0,
+  },
+  sectionTitle: {
+    fontFamily: fonts.extraBold,
+    fontSize: 20,
+    lineHeight: 25,
     fontWeight: '800' as const,
     letterSpacing: 0,
   },

@@ -8,6 +8,7 @@ import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { getMainFeature, HoldIcon } from '../components/HoldIcon';
+import { NewClimbPickerModal } from '../components/NewClimbPickerModal';
 import { SessionDiscardSection } from '../components/SessionDiscardSection';
 import { SessionLiveStatsRow } from '../components/SessionLiveStatsRow';
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -18,6 +19,7 @@ import {
   climbColours,
   featureSections,
   getAdditionalFeatures,
+  getClimbScaleSnapshot,
   getKnownFeatures,
   isCommonFeature,
   matchesFeatureSearch,
@@ -26,6 +28,7 @@ import {
 } from '../features/climbs';
 import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 const destructiveRed = '#B85A3B';
 const longSessionThresholdSeconds = 6 * 60 * 60;
@@ -42,11 +45,6 @@ type EditDraft = {
   grade: string;
   holdTypes: string[];
   quickCount: number;
-};
-
-type NewClimbDraft = {
-  colours: string[];
-  grade: string;
 };
 
 type TimelineItem =
@@ -145,7 +143,7 @@ function QuickClimbGroupCard({
     <AppCard style={styles.quickDoneCard}>
       <View style={styles.quickDoneMain}>
         <Feather name="zap" size={16} color={colors.charcoal} />
-        <Text style={styles.quickDoneGrade}>{count > 1 ? `${count}x ${gradeLabel}` : gradeLabel}</Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.quickDoneGrade}>{count > 1 ? `${count}x ${gradeLabel}` : gradeLabel}</Text>
         <Text style={styles.quickDoneLabel}>Quick climb</Text>
         <TouchableOpacity
           activeOpacity={0.76}
@@ -277,21 +275,25 @@ function TapeGradeLabel({
   scale?: { gradingScaleVGradeRanges: Record<string, { max: string; min: string }> };
 }) {
   if (!isTape || !scale) {
-    return <Text style={styles.stepperGrade}>{grade}</Text>;
+    return <Text ellipsizeMode="tail" numberOfLines={1} style={styles.stepperGrade}>{grade}</Text>;
   }
 
   return (
     <View style={styles.tapeStepperValue}>
       <View style={styles.tapeGradeMainRow}>
         <View style={[styles.tapeGradeDot, { backgroundColor: getGradeColourValue(grade) ?? colors.stone }]} />
-        <Text style={styles.stepperGrade}>{grade}</Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.stepperGrade}>{grade}</Text>
       </View>
       <Text style={styles.tapeGradeEstimate}>Est. {formatEstimatedVGradeAverage(grade, scale)}</Text>
     </View>
   );
 }
 
-export function ActiveSessionScreen() {
+type ActiveSessionScreenProps = {
+  disableEntryAnimation?: boolean;
+};
+
+export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSessionScreenProps) {
   const router = useRouter();
   const { height } = useWindowDimensions();
   const screenProgress = useRef(new Animated.Value(1)).current;
@@ -309,7 +311,6 @@ export function ActiveSessionScreen() {
   const quickAddWarmUpClimb = useActiveSessionStore((state) => state.quickAddWarmUpClimb);
   const reorderTimeline = useActiveSessionStore((state) => state.reorderTimeline);
   const restoreActiveSession = useActiveSessionStore((state) => state.restoreActiveSession);
-  const startClimb = useActiveSessionStore((state) => state.startClimb);
   const startSession = useActiveSessionStore((state) => state.startSession);
   const totals = useActiveSessionStore((state) => state.totals);
   const undoAttempt = useActiveSessionStore((state) => state.undoAttempt);
@@ -327,7 +328,6 @@ export function ActiveSessionScreen() {
   const [isLongSessionPromptVisible, setIsLongSessionPromptVisible] = useState(false);
   const [hasActiveSessionRestoreSettled, setHasActiveSessionRestoreSettled] = useState(false);
   const [isNewClimbPickerVisible, setIsNewClimbPickerVisible] = useState(false);
-  const [newClimbDraft, setNewClimbDraft] = useState<NewClimbDraft>({ colours: [], grade: 'V0' });
   const [editOpenFeatureField, setEditOpenFeatureField] = useState<EditFeatureField | null>(null);
   const [editFeatureSearch, setEditFeatureSearch] = useState('');
   const [expandedEditFeatureSections, setExpandedEditFeatureSections] = useState<string[]>(allFeatureSectionTitles);
@@ -336,9 +336,8 @@ export function ActiveSessionScreen() {
     [activeSession?.gradingScaleGrades],
   );
   const sessionIsTapeScale = Boolean(activeSession?.gradingScaleIsTape);
+  const activeClimbScale = activeSession && activeClimb ? getClimbScaleSnapshot(activeClimb, activeSession) : null;
   const selectedQuickGradeIndex = Math.max(0, sessionGradeOptions.indexOf(selectedWarmUpGrade));
-  const newClimbGradeIndex = Math.max(0, sessionGradeOptions.indexOf(newClimbDraft.grade));
-  const canStartNewClimb = Boolean(newClimbDraft.grade);
   const canSaveEditDraft = Boolean(editDraft?.grade);
   const editMainFeature = editDraft ? getMainFeature(editDraft.holdTypes) : undefined;
   const editAdditionalFeatures = editDraft ? getAdditionalFeatures(editDraft.holdTypes) : [];
@@ -346,6 +345,11 @@ export function ActiveSessionScreen() {
   const activeSessionId = activeSession?.id ?? null;
 
   useEffect(() => {
+    if (disableEntryAnimation) {
+      screenProgress.setValue(0);
+      return;
+    }
+
     screenProgress.setValue(1);
     Animated.timing(screenProgress, {
       duration: 300,
@@ -353,7 +357,7 @@ export function ActiveSessionScreen() {
       toValue: 0,
       useNativeDriver: true,
     }).start();
-  }, [screenProgress]);
+  }, [disableEntryAnimation, screenProgress]);
 
   useEffect(() => {
     let isMounted = true;
@@ -378,10 +382,7 @@ export function ActiveSessionScreen() {
       setSelectedWarmUpGrade(firstGrade);
     }
 
-    if (!sessionGradeOptions.includes(newClimbDraft.grade)) {
-      setNewClimbDraft((draft) => ({ ...draft, grade: firstGrade }));
-    }
-  }, [newClimbDraft.grade, selectedWarmUpGrade, sessionGradeOptions]);
+  }, [selectedWarmUpGrade, sessionGradeOptions]);
 
   useEffect(() => {
     if (!activeSession) {
@@ -390,7 +391,6 @@ export function ActiveSessionScreen() {
 
     const firstGrade = sessionGradeOptions[0] ?? 'V0';
     setSelectedWarmUpGrade(firstGrade);
-    setNewClimbDraft((draft) => ({ ...draft, grade: firstGrade }));
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -470,31 +470,7 @@ export function ActiveSessionScreen() {
   }
 
   function handleAddNewClimb() {
-    setNewClimbDraft({ colours: [], grade: sessionGradeOptions[0] ?? 'V0' });
     setIsNewClimbPickerVisible(true);
-  }
-
-  function toggleNewClimbColour(colour: string) {
-    setNewClimbDraft((draft) => {
-      const nextColours = draft.colours.includes(colour)
-        ? draft.colours.filter((item) => item !== colour)
-        : [...draft.colours, colour].slice(0, 2);
-
-      return { ...draft, colours: nextColours };
-    });
-  }
-
-  async function confirmAddNewClimb() {
-    if (!canStartNewClimb) {
-      return;
-    }
-
-    await startClimb({
-      colour: newClimbDraft.colours.length > 0 ? stringifyColours(newClimbDraft.colours) : null,
-      grade: newClimbDraft.grade,
-      holdTypes: [],
-    });
-    setIsNewClimbPickerVisible(false);
   }
 
   async function handleQuickAddWarmUp() {
@@ -851,16 +827,20 @@ export function ActiveSessionScreen() {
                       }}
                       onEdit={() => openQuickEdit(item)}
                     />
-                  ) : (
-                    <DoneClimbCard
-                      celebrate={item.climb.id === celebratingClimbId && item.climb.completed}
-                      climb={item.climb}
-                      disabled={isLoading}
-                      gradingScaleIsTape={sessionIsTapeScale}
-                      onDelete={() => void deleteClimb(item.climb.id)}
-                      onEdit={() => openQuickEdit(item)}
-                    />
-                  )}
+                  ) : (() => {
+                    const climbScale = getClimbScaleSnapshot(item.climb, activeSession);
+
+                    return (
+                      <DoneClimbCard
+                        celebrate={item.climb.id === celebratingClimbId && item.climb.completed}
+                        climb={item.climb}
+                        disabled={isLoading}
+                        gradingScaleIsTape={climbScale.gradingScaleIsTape}
+                        onDelete={() => void deleteClimb(item.climb.id)}
+                        onEdit={() => openQuickEdit(item)}
+                      />
+                    );
+                  })()}
                 </DraggableTimelineRow>
               ))
             ) : (
@@ -880,9 +860,9 @@ export function ActiveSessionScreen() {
             <ActiveClimbCard
               climb={activeClimb}
               disabled={isLoading}
-              gradeOptions={sessionGradeOptions}
-              gradingScaleIsTape={sessionIsTapeScale}
-              gradingScaleVGradeRanges={activeSession.gradingScaleVGradeRanges}
+              gradeOptions={activeClimbScale?.gradingScaleGrades ?? sessionGradeOptions}
+              gradingScaleIsTape={activeClimbScale?.gradingScaleIsTape ?? sessionIsTapeScale}
+              gradingScaleVGradeRanges={activeClimbScale?.gradingScaleVGradeRanges ?? activeSession.gradingScaleVGradeRanges}
               mainFeatureRequiredSignal={mainFeatureRequiredSignal}
               onAddAttempt={() => void addAttempt()}
               onDelete={() => void deleteClimb(activeClimb.id)}
@@ -945,22 +925,21 @@ export function ActiveSessionScreen() {
                 onPress={handleAddNewClimb}
                 title="Add New Climb"
               />
-              <View style={styles.secondaryControlRow}>
-                <AppButton
-                  disabled={isLoading}
-                  icon="settings"
-                  onPress={() => undefined}
-                  style={styles.secondaryControlButton}
-                  title="Settings"
-                  variant="secondary"
-                />
-                <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.secondaryControlButton} />
-              </View>
             </>
           ) : null}
 
           {activeClimb ? <Text style={styles.activeHint}>Finish the current climb with Sent It or Another Time before adding another.</Text> : null}
-          {activeClimb ? <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.discardButton} /> : null}
+          <View style={styles.secondaryControlRow}>
+            <AppButton
+              disabled={isLoading}
+              icon="settings"
+              onPress={() => undefined}
+              style={styles.secondaryControlButton}
+              title="Settings"
+              variant="secondary"
+            />
+            <SessionDiscardSection disabled={isLoading} onDiscard={handleDiscardSession} style={styles.secondaryControlButton} />
+          </View>
         </>
       ) : (
         <AppButton
@@ -1203,7 +1182,8 @@ export function ActiveSessionScreen() {
                   }
                   autoCapitalize="none"
                   autoCorrect={false}
-                  onChangeText={setEditFeatureSearch}
+                  maxLength={inputLimits.featureSearch}
+                  onChangeText={(search) => setEditFeatureSearch(limitInput(search, inputLimits.featureSearch))}
                   placeholder="Search"
                   placeholderTextColor={colors.muted}
                   style={styles.featureSearchInput}
@@ -1230,128 +1210,7 @@ export function ActiveSessionScreen() {
         </DismissibleModal>
       ) : null}
 
-      <DismissibleModal onDismiss={() => setIsNewClimbPickerVisible(false)} visible={isNewClimbPickerVisible}>
-          <AppCard style={styles.editCard}>
-            <View style={styles.editHeader}>
-              <Text style={styles.confirmTitle}>Add new climb</Text>
-              <TouchableOpacity
-                activeOpacity={0.76}
-                accessibilityLabel="Close new climb options"
-                accessibilityRole="button"
-                onPress={() => setIsNewClimbPickerVisible(false)}
-                style={styles.editCloseButton}
-              >
-                <Feather name="x" size={18} color={colors.charcoal} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.editContent}>
-              <Text style={styles.editLabel}>Grade</Text>
-              {sessionIsTapeScale ? (
-                <View style={styles.tapeGradeGrid}>
-                  {sessionGradeOptions.map((grade) => {
-                    const selected = newClimbDraft.grade === grade;
-
-                    return (
-                      <TouchableOpacity
-                        activeOpacity={0.76}
-                        accessibilityLabel={`Select ${grade} tape grade`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        key={grade}
-                        onPress={() => setNewClimbDraft({ ...newClimbDraft, grade })}
-                        style={[styles.tapeGradeOption, selected && styles.selectedEditOption]}
-                      >
-                        <View style={[styles.tapeGradeDotLarge, { backgroundColor: getGradeColourValue(grade) ?? colors.stone }]} />
-                        <Text style={styles.tapeGradeOptionText}>{grade}</Text>
-                        <Text style={styles.tapeGradeOptionEstimate}>
-                          Est. {formatEstimatedVGradeAverage(grade, activeSession ?? { gradingScaleVGradeRanges: {} })}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ) : (
-                <View style={styles.newClimbGradeSelector}>
-                  <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Decrease new climb grade"
-                    accessibilityRole="button"
-                    disabled={newClimbGradeIndex === 0}
-                    onPress={() =>
-                      setNewClimbDraft({
-                        ...newClimbDraft,
-                        grade: sessionGradeOptions[Math.max(0, newClimbGradeIndex - 1)] ?? newClimbDraft.grade,
-                      })
-                    }
-                    style={[styles.newClimbGradeButton, newClimbGradeIndex === 0 && styles.disabledStepperButton]}
-                  >
-                    <Feather name="minus" size={18} color={destructiveRed} />
-                  </TouchableOpacity>
-                  <View style={styles.newClimbGradeValueWrap}>
-                    <Text style={styles.newClimbGradeValue}>{newClimbDraft.grade}</Text>
-                  </View>
-                  <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Increase new climb grade"
-                    accessibilityRole="button"
-                    disabled={newClimbGradeIndex === sessionGradeOptions.length - 1}
-                    onPress={() =>
-                      setNewClimbDraft({
-                        ...newClimbDraft,
-                        grade: sessionGradeOptions[Math.min(sessionGradeOptions.length - 1, newClimbGradeIndex + 1)] ?? newClimbDraft.grade,
-                      })
-                    }
-                    style={[styles.newClimbGradeButton, newClimbGradeIndex === sessionGradeOptions.length - 1 && styles.disabledStepperButton]}
-                  >
-                    <Feather name="plus" size={18} color={colors.charcoal} />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              <Text style={styles.editLabel}>Hold colour</Text>
-              <Text style={styles.activePreferenceHint}>Optional.</Text>
-              <View style={styles.editOptionWrap}>
-                {climbColours.map((climbColour) => {
-                  const selected = newClimbDraft.colours.includes(climbColour.label);
-                  const disabled = !selected && newClimbDraft.colours.length >= 2;
-
-                  return (
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Toggle ${climbColour.label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      disabled={disabled}
-                      key={climbColour.label}
-                      onPress={() => toggleNewClimbColour(climbColour.label)}
-                      style={[styles.editOption, selected && styles.selectedEditOption, disabled && styles.disabledEditOption]}
-                    >
-                      <View style={[styles.colourDot, { backgroundColor: climbColour.value }]} />
-                      <Text style={styles.editOptionText}>{climbColour.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={styles.confirmActions}>
-                <AppButton
-                  disabled={isLoading || !canStartNewClimb}
-                  icon="plus"
-                  onPress={() => void confirmAddNewClimb()}
-                  title={isLoading ? 'Adding Climb...' : 'Start Climb'}
-                />
-                <AppButton
-                  disabled={isLoading}
-                  icon="x"
-                  onPress={() => setIsNewClimbPickerVisible(false)}
-                  title="Cancel"
-                  variant="secondary"
-                />
-              </View>
-            </ScrollView>
-          </AppCard>
-      </DismissibleModal>
+      <NewClimbPickerModal onDismiss={() => setIsNewClimbPickerVisible(false)} visible={isNewClimbPickerVisible} />
 
       <DismissibleModal onDismiss={() => setIsLongSessionPromptVisible(false)} visible={isLongSessionPromptVisible}>
           <AppCard style={styles.confirmCard}>
@@ -1410,10 +1269,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    ...typography.h2,
+    ...typography.compactTitle,
     color: colors.charcoal,
-    fontSize: 24,
-    lineHeight: 29,
   },
   subtitle: {
     color: colors.muted,
@@ -1501,6 +1358,7 @@ const styles = StyleSheet.create({
   },
   quickDoneGrade: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 18,
     fontWeight: '800',
   },
@@ -1525,6 +1383,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flex: 1,
     gap: spacing.sm,
+    minWidth: 0,
   },
   quickStepper: {
     alignItems: 'center',
@@ -1587,11 +1446,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
-  discardButton: {
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-  },
   stepperButton: {
     alignItems: 'center',
     height: 44,
@@ -1609,6 +1463,7 @@ const styles = StyleSheet.create({
   },
   stepperGrade: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '800',
     minWidth: 48,

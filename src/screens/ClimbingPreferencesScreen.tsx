@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useProfileReturnTransition } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../domain/gradeScales';
 import { climbColours } from '../features/climbs';
 import { useClimbingPreferencesStore } from '../features/preferences';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 function createCustomScaleId() {
   return `custom_${Date.now()}`;
@@ -45,7 +46,7 @@ function createDefaultVGradeRanges(grades: string[]) {
 }
 
 export function ClimbingPreferencesScreen() {
-  const router = useRouter();
+  const { goBackWithTransition } = useProfileReturnTransition();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const updatePreferences = useClimbingPreferencesStore((state) => state.updatePreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
@@ -246,7 +247,7 @@ export function ClimbingPreferencesScreen() {
           activeOpacity={0.72}
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackWithTransition('/settings')}
           style={styles.backButton}
         >
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -277,7 +278,7 @@ export function ClimbingPreferencesScreen() {
                 style={[styles.choiceRow, index === builtInGradingScales.length - 1 && styles.lastChoiceRow, selected && styles.selectedChoiceRow]}
               >
                 <View style={styles.choiceCopy}>
-                  <Text style={styles.choiceTitle}>{option.gradingScaleName}</Text>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.choiceTitle}>{option.gradingScaleName}</Text>
                   <Text style={styles.choiceDetail}>
                     {option.gradingScaleType === 'font' ? 'Fontainebleau-style bouldering grades.' : 'Classic bouldering grades.'}
                   </Text>
@@ -321,7 +322,7 @@ export function ClimbingPreferencesScreen() {
               <AppCard key={scale.id} style={[styles.customScaleCard, selected && styles.selectedCustomScaleCard]}>
                 <View style={styles.customScaleTopRow}>
                   <View style={styles.choiceCopy}>
-                    <Text style={styles.choiceTitle}>{scale.name}</Text>
+                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.choiceTitle}>{scale.name}</Text>
                     <Text style={styles.choiceDetail}>{scale.grades.length} grades, easiest to hardest.</Text>
                   </View>
                   <Text style={styles.choiceValue}>{selected ? 'Selected' : ''}</Text>
@@ -329,7 +330,7 @@ export function ClimbingPreferencesScreen() {
                 <View style={styles.gradeWrap}>
                   {scale.grades.map((grade) => (
                     <View key={grade} style={styles.gradePill}>
-                      <Text style={styles.gradePillText}>{grade}</Text>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradePillText}>{grade}</Text>
                     </View>
                   ))}
                 </View>
@@ -355,12 +356,12 @@ export function ClimbingPreferencesScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Scale preview</Text>
-        <Text style={styles.sectionCopy}>{selectedScale.gradingScaleName}, easiest to hardest.</Text>
+        <Text ellipsizeMode="tail" numberOfLines={2} style={styles.sectionCopy}>{selectedScale.gradingScaleName}, easiest to hardest.</Text>
         <AppCard style={styles.previewCard}>
           <View style={styles.gradeWrap}>
             {selectedScale.gradingScaleGrades.map((grade) => (
               <View key={grade} style={styles.gradePill}>
-                <Text style={styles.gradePillText}>{grade}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradePillText}>{grade}</Text>
               </View>
             ))}
           </View>
@@ -392,7 +393,8 @@ export function ClimbingPreferencesScreen() {
               <Text style={styles.inputLabel}>Name</Text>
               <TextInput
                 accessibilityLabel="Custom grading scale name"
-                onChangeText={setDraftName}
+                maxLength={inputLimits.customScaleName}
+                onChangeText={(name) => setDraftName(limitInput(name, inputLimits.customScaleName))}
                 placeholder="Tape, Chilli, Circuit..."
                 placeholderTextColor={colors.muted}
                 style={styles.input}
@@ -433,7 +435,7 @@ export function ClimbingPreferencesScreen() {
                         style={[styles.tapeColourOption, selected && styles.selectedChoiceRow]}
                       >
                         <View style={[styles.tapeColourDot, { backgroundColor: climbColour.value }]} />
-                        <Text style={styles.tapeColourText}>{climbColour.label}</Text>
+                        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.tapeColourText}>{climbColour.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -442,7 +444,8 @@ export function ClimbingPreferencesScreen() {
                 <View style={styles.addRow}>
                   <TextInput
                     accessibilityLabel="New custom grade"
-                    onChangeText={setDraftGrade}
+                    maxLength={inputLimits.customGradeName}
+                    onChangeText={(grade) => setDraftGrade(limitInput(grade, inputLimits.customGradeName))}
                     onSubmitEditing={handleAddDraftGrade}
                     placeholder="e.g. Red, Hot, Level 4"
                     placeholderTextColor={colors.muted}
@@ -478,7 +481,7 @@ export function ClimbingPreferencesScreen() {
                               ]}
                             />
                           ) : null}
-                          <Text style={styles.gradeName}>{grade}</Text>
+                          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradeName}>{grade}</Text>
                         </View>
                         <Text style={styles.gradeRangeText}>Badge value {formatVGradeRange(normalizeVGradeRange(draftVGradeRanges[grade]))}</Text>
                       </View>
@@ -562,7 +565,6 @@ export function ClimbingPreferencesScreen() {
 
               <View style={styles.editorActions}>
                 <AppButton disabled={!canSaveDraft} onPress={handleSaveDraft} title={editingScaleId ? 'Save Scale' : 'Create Scale'} />
-                <AppButton onPress={() => setIsEditorVisible(false)} title="Cancel" variant="secondary" />
               </View>
             </ScrollView>
           </AppCard>
@@ -615,6 +617,7 @@ const styles = StyleSheet.create({
   },
   choiceCopy: {
     flex: 1,
+    minWidth: 0,
   },
   choiceDetail: {
     color: colors.muted,
@@ -785,11 +788,13 @@ const styles = StyleSheet.create({
   },
   gradeNameBlock: {
     flex: 1,
+    minWidth: 0,
   },
   gradeNameRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
+    minWidth: 0,
   },
   gradeOrder: {
     alignItems: 'center',
@@ -812,6 +817,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stone,
     borderRadius: radius.pill,
     borderWidth: 1,
+    maxWidth: '100%',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -820,6 +826,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
     fontWeight: '700',
+    maxWidth: 180,
   },
   gradeRangeText: {
     color: colors.muted,
@@ -943,7 +950,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sectionTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
     marginBottom: spacing.xs,
   },

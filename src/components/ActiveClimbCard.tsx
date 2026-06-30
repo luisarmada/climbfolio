@@ -21,6 +21,7 @@ import { AppCard } from './AppCard';
 import { DismissibleModal } from './DismissibleModal';
 import { getMainFeature, HoldIcon } from './HoldIcon';
 import { TimerText } from './TimerText';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 const destructiveRed = '#B85A3B';
 const allFeatureSectionTitles = featureSections.map((section) => section.title);
@@ -278,12 +279,12 @@ export function ActiveClimbCard({
   return (
     <AppCard style={styles.card}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>Current Climb</Text>
           <View style={styles.titleRow}>
             {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={46} /> : null}
-            <Text style={styles.grade}>{gradeLabel}</Text>
-            {climb.colour ? <Text style={styles.meta}>- {colourLabel}</Text> : null}
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.grade}>{gradeLabel}</Text>
+            {climb.colour ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.meta}>- {colourLabel}</Text> : null}
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -394,7 +395,8 @@ export function ActiveClimbCard({
                 accessibilityLabel={openField === 'additionalFeatures' ? 'Search additional features' : 'Search main features'}
                 autoCapitalize="none"
                 autoCorrect={false}
-                onChangeText={setFeatureSearch}
+                maxLength={inputLimits.featureSearch}
+                onChangeText={(search) => setFeatureSearch(limitInput(search, inputLimits.featureSearch))}
                 placeholder="Search"
                 placeholderTextColor={colors.muted}
                 style={styles.searchInput}
@@ -455,14 +457,14 @@ export function ActiveClimbCard({
                           { backgroundColor: climbColours.find((climbColour) => climbColour.label === detailsGrade)?.value ?? colors.stone },
                         ]}
                       />
-                      <Text style={styles.detailsStepperValue}>{detailsGrade}</Text>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailsStepperValue}>{detailsGrade}</Text>
                     </View>
                     <Text style={styles.detailsTapeGradeEstimate}>
                       Est. {formatEstimatedVGradeAverage(detailsGrade, { gradingScaleVGradeRanges })}
                     </Text>
                   </View>
                 ) : (
-                  <Text style={styles.detailsStepperValue}>{detailsGrade}</Text>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailsStepperValue}>{detailsGrade}</Text>
                 )}
                 <TouchableOpacity
                   activeOpacity={0.76}
@@ -688,8 +690,8 @@ export function DoneClimbCard({
           <View style={styles.doneHeader}>
             <View style={styles.doneMain}>
               {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={34} /> : null}
-              <Text style={styles.doneGrade}>{gradeLabel}</Text>
-              {climb.colour ? <Text style={styles.doneMeta}>{colourLabel}</Text> : null}
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneGrade}>{gradeLabel}</Text>
+              {climb.colour ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneMeta}>{colourLabel}</Text> : null}
               <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.anotherTimeState]}>
                 {climb.completed ? 'Sent it' : 'Another time'}
               </Text>
@@ -843,6 +845,7 @@ const styles = StyleSheet.create({
   },
   detailsStepperValue: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: '900',
     minWidth: 54,
@@ -900,6 +903,7 @@ const styles = StyleSheet.create({
   },
   doneGrade: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 22,
     fontWeight: '800',
   },
@@ -939,6 +943,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexWrap: 'wrap',
     gap: spacing.sm,
+    minWidth: 0,
   },
   doneMeta: {
     color: colors.muted,
@@ -1037,6 +1042,7 @@ const styles = StyleSheet.create({
   grade: {
     ...typography.h2,
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 28,
     lineHeight: 32,
   },
@@ -1050,6 +1056,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1113,6 +1123,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: colors.muted,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '700',
     marginLeft: spacing.sm,
@@ -1153,6 +1164,7 @@ const styles = StyleSheet.create({
   },
   selectTextWrap: {
     flex: 1,
+    minWidth: 0,
   },
   selectValue: {
     color: colors.charcoal,
@@ -1249,8 +1261,8 @@ const styles = StyleSheet.create({
   titleRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.xs,
+    minWidth: 0,
   },
   wideSelectButton: {
     flexBasis: '100%',

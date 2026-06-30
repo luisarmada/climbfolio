@@ -203,8 +203,8 @@ export function SessionSummaryScreen() {
         {isSessionStatisticsOpen ? (
           <View style={styles.statisticsPanel}>
             <AppCard style={styles.sessionCard}>
-              <Text style={styles.sessionTitle}>{sessionTitle}</Text>
-              <Text style={styles.sessionSubtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.sessionTitle}>{sessionTitle}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.sessionSubtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
             </AppCard>
 
             <View style={styles.grid}>
@@ -224,17 +224,17 @@ export function SessionSummaryScreen() {
             <AppCard style={styles.detailCard}>
               <Text style={styles.detailTitle}>Session notes</Text>
               <View style={styles.detailRows}>
-                {summary.session.description ? <Text style={styles.detailRow}>{summary.session.description}</Text> : null}
-                <Text style={styles.detailRow}>Location: {summary.session.locationName ?? 'Not set'}</Text>
-                {summary.session.locationType ? <Text style={styles.detailRow}>Location type: {summary.session.locationType}</Text> : null}
-                <Text style={styles.detailRow}>Completion rate: {summary.completionRate}%</Text>
-                <Text style={styles.detailRow}>Highest attempted: {summary.highestGradeAttempted ?? 'None'}</Text>
-                <Text style={styles.detailRow}>Most common hold colour: {summary.mostCommonColour ?? 'None'}</Text>
-                <Text style={styles.detailRow}>Most common feature: {summary.mostCommonHoldType ?? 'None'}</Text>
-                <Text style={styles.detailRow}>
+                {summary.session.description ? <Text ellipsizeMode="tail" numberOfLines={4} style={styles.detailRow}>{summary.session.description}</Text> : null}
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Location: {summary.session.locationName ?? 'Not set'}</Text>
+                {summary.session.locationType ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Location type: {summary.session.locationType}</Text> : null}
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Completion rate: {summary.completionRate}%</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Highest attempted: {summary.highestGradeAttempted ?? 'None'}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Most common hold colour: {summary.mostCommonColour ?? 'None'}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>Most common feature: {summary.mostCommonHoldType ?? 'None'}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>
                   Average rest between attempts: {formatOptionalDuration(summary.averageRestBetweenAttemptsSeconds)}
                 </Text>
-                <Text style={styles.detailRow}>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailRow}>
                   Average rest between climbs: {formatOptionalDuration(summary.averageRestBetweenClimbsSeconds)}
                 </Text>
               </View>

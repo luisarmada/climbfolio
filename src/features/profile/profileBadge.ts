@@ -1,4 +1,5 @@
 import { formatVGradeRange, getDisplayGradeForVRank, getGradeVRange, getVGradeIndex, resolveSelectedGradingScale } from '../../domain/gradeScales';
+import { getClimbScaleSnapshot } from '../climbs';
 import { SessionSummary } from '../summaries';
 
 export function formatProfileBadge(summaries: SessionSummary[], selectedScale: ReturnType<typeof resolveSelectedGradingScale>) {
@@ -7,7 +8,7 @@ export function formatProfileBadge(summaries: SessionSummary[], selectedScale: R
       summary.climbs
         .filter((climb) => climb.completed)
         .map((climb) => {
-          const range = getGradeVRange(climb.grade, summary.session);
+          const range = getGradeVRange(climb.grade, getClimbScaleSnapshot(climb, summary.session));
           return {
             maxRank: getVGradeIndex(range.max),
             minRank: getVGradeIndex(range.min),

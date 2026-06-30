@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AppButton } from '../components/AppButton';
+import { Href, useLocalSearchParams } from 'expo-router';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { useProfileReturnTransition } from '../components/AppShell';
+import { SavedSessionEditorModal } from '../components/SavedSessionEditorModal';
+import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { normalizeFeature } from '../features/climbs';
 import { getSessionDisplayName } from '../features/sessions';
 import {
@@ -25,10 +26,65 @@ function formatFeatureDisplay(features: string[]) {
 }
 
 export function SessionDetailScreen() {
-  const router = useRouter();
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const { goBackWithTransition } = useProfileReturnTransition();
+  const { date, feature, grade, locationId, returnTo, scaleKey, sessionId } = useLocalSearchParams<{
+    date?: string;
+    feature?: string;
+    grade?: string;
+    locationId?: string;
+    returnTo?: string;
+    scaleKey?: string;
+    sessionId: string;
+  }>();
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const openedFromCollectionCell = returnTo === 'collectionCell';
+  const openedFromCalendar = returnTo === 'calendar';
+  const openedFromCalendarDay = returnTo === 'calendarDay';
+  const calendarDayFallback: Href = date
+    ? { pathname: '/calendar/day/[date]', params: { date } }
+    : '/calendar';
+  const collectionCellFallback: Href = feature && grade
+    ? {
+        pathname: '/collection/cell',
+        params: {
+          feature,
+          grade,
+          locationId: locationId ?? '',
+          scaleKey: scaleKey ?? '',
+        },
+      }
+    : '/collection';
+  const backFallback: Href = openedFromCollectionCell ? collectionCellFallback : openedFromCalendarDay ? calendarDayFallback : openedFromCalendar ? '/calendar' : '/profile';
+  const backAccessibilityLabel = openedFromCollectionCell
+    ? 'Back to cell sessions'
+    : openedFromCalendarDay
+      ? 'Back to day sessions'
+      : openedFromCalendar
+        ? 'Back to calendar'
+        : 'Back to profile';
+  const handleBack = () => goBackWithTransition(backFallback);
+
+  function renderHeader(title: string) {
+    return (
+      <View style={styles.topRow}>
+        <TouchableOpacity
+          activeOpacity={0.72}
+          accessibilityLabel={backAccessibilityLabel}
+          accessibilityRole="button"
+          onPress={handleBack}
+          style={styles.backButton}
+        >
+          <Feather name="chevron-left" size={24} color={colors.charcoal} />
+        </TouchableOpacity>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>{title}</Text>
+        </View>
+      </View>
+    );
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -57,7 +113,7 @@ export function SessionDetailScreen() {
   if (isLoading) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.title}>Session Detail</Text>
+        {renderHeader('Session Detail')}
         <Text style={styles.subtitle}>Loading climbs...</Text>
       </View>
     );
@@ -66,9 +122,8 @@ export function SessionDetailScreen() {
   if (!summary) {
     return (
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Session Detail</Text>
+        {renderHeader('Session Detail')}
         <Text style={styles.subtitle}>No saved session was found.</Text>
-        <AppButton icon="user" onPress={() => router.push('/profile')} title="Back to Profile" variant="secondary" />
       </ScrollView>
     );
   }
@@ -77,13 +132,37 @@ export function SessionDetailScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>{sessionTitle}</Text>
+      {renderHeader('Saved Session')}
       <Text style={styles.subtitle}>{formatSessionDate(summary.session.startTime)}, {formatSessionTime(summary.session.startTime)}</Text>
 
       <AppCard style={styles.summaryCard}>
-        <Text style={styles.cardTitle}>Saved Session</Text>
-        {summary.session.description ? <Text style={styles.sessionDescription}>{summary.session.description}</Text> : null}
-        <Text style={styles.sessionDescription}>Location: {summary.session.locationName ?? 'Not set'}</Text>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardHeaderCopy}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.cardTitle}>{sessionTitle}</Text>
+            {savedMessage ? <Text style={styles.savedText}>{savedMessage}</Text> : null}
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.72}
+            accessibilityLabel="Open session actions"
+            accessibilityRole="button"
+            onPress={() => {
+              setSavedMessage(null);
+              setIsEditorVisible(true);
+            }}
+            style={styles.iconButton}
+          >
+            <Feather name="more-horizontal" size={18} color={colors.charcoal} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.detailStack}>
+          <Text ellipsizeMode="tail" numberOfLines={4} style={styles.sessionDescription}>{summary.session.description ?? 'No description added.'}</Text>
+          <View style={styles.metadataRow}>
+            <Feather name="map-pin" size={16} color={colors.muted} />
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.metadataText}>{summary.session.locationName ?? 'Location not set'}</Text>
+          </View>
+        </View>
+
         <View style={styles.summaryGrid}>
           <View>
             <Text style={styles.summaryValue}>{formatDuration(summary.session.durationSeconds)}</Text>
@@ -102,6 +181,7 @@ export function SessionDetailScreen() {
             <Text style={styles.summaryLabel}>Avg tries</Text>
           </View>
         </View>
+
       </AppCard>
 
       {summary.climbs.length === 0 ? (
@@ -117,11 +197,11 @@ export function SessionDetailScreen() {
           {summary.climbs.map((climb, index) => (
             <AppCard key={climb.id} style={styles.climbCard}>
               <View style={styles.climbTopRow}>
-                <View>
-                  <Text style={styles.climbTitle}>
+                <View style={styles.climbCopy}>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbTitle}>
                     {index + 1}. {climb.grade}
                   </Text>
-                  <Text style={styles.climbMeta}>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbMeta}>
                     {formatColourDisplay(climb.colour)} - {climb.completed ? 'Sent it' : 'Another time'}
                   </Text>
                 </View>
@@ -129,10 +209,10 @@ export function SessionDetailScreen() {
                   <Text style={styles.statusText}>{climb.completed ? 'Sent' : 'Tried'}</Text>
                 </View>
               </View>
-              <Text style={styles.climbDetail}>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbDetail}>
                 {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'} - {formatDuration(climb.durationSeconds)}
               </Text>
-              <Text style={styles.climbDetail}>
+              <Text ellipsizeMode="tail" numberOfLines={2} style={styles.climbDetail}>
                 {formatFeatureDisplay(climb.holdTypes)}
               </Text>
             </AppCard>
@@ -140,15 +220,44 @@ export function SessionDetailScreen() {
         </View>
       )}
 
-      <AppButton icon="user" onPress={() => router.push('/profile')} title="Back to Profile" variant="secondary" />
+      <SavedSessionEditorModal
+        onDeleted={() => goBackWithTransition(backFallback)}
+        onDismiss={() => setIsEditorVisible(false)}
+        onSaved={(nextSummary) => {
+          setSummary(nextSummary);
+          setSavedMessage('Session details saved.');
+        }}
+        summary={summary}
+        visible={isEditorVisible}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   cardTitle: {
     ...typography.h2,
     color: colors.charcoal,
+  },
+  cardHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
   centerState: {
@@ -158,6 +267,10 @@ const styles = StyleSheet.create({
   },
   climbCard: {
     padding: spacing.lg,
+  },
+  climbCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   climbDetail: {
     color: colors.muted,
@@ -218,6 +331,36 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: spacing.sm,
   },
+  detailStack: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  iconButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  metadataRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  metadataText: {
+    color: colors.muted,
+    flex: 1,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  savedText: {
+    color: colors.success,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   anotherTimePill: {
     backgroundColor: 'rgba(255,150,102,0.2)',
   },
@@ -248,10 +391,10 @@ const styles = StyleSheet.create({
   },
   sessionDescription: {
     color: colors.muted,
+    fontFamily: fonts.medium,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '500',
     lineHeight: 22,
-    marginBottom: spacing.lg,
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -272,5 +415,14 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
+  },
+  titleBlock: {
+    flex: 1,
+  },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
   },
 });
