@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxxl,
   },
   title: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
   },
 });

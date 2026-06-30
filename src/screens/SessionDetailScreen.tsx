@@ -138,7 +138,7 @@ export function SessionDetailScreen() {
       <AppCard style={styles.summaryCard}>
         <View style={styles.cardHeaderRow}>
           <View style={styles.cardHeaderCopy}>
-            <Text style={styles.cardTitle}>{sessionTitle}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.cardTitle}>{sessionTitle}</Text>
             {savedMessage ? <Text style={styles.savedText}>{savedMessage}</Text> : null}
           </View>
           <TouchableOpacity
@@ -156,10 +156,10 @@ export function SessionDetailScreen() {
         </View>
 
         <View style={styles.detailStack}>
-          <Text style={styles.sessionDescription}>{summary.session.description ?? 'No description added.'}</Text>
+          <Text ellipsizeMode="tail" numberOfLines={4} style={styles.sessionDescription}>{summary.session.description ?? 'No description added.'}</Text>
           <View style={styles.metadataRow}>
             <Feather name="map-pin" size={16} color={colors.muted} />
-            <Text style={styles.metadataText}>{summary.session.locationName ?? 'Location not set'}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.metadataText}>{summary.session.locationName ?? 'Location not set'}</Text>
           </View>
         </View>
 
@@ -197,11 +197,11 @@ export function SessionDetailScreen() {
           {summary.climbs.map((climb, index) => (
             <AppCard key={climb.id} style={styles.climbCard}>
               <View style={styles.climbTopRow}>
-                <View>
-                  <Text style={styles.climbTitle}>
+                <View style={styles.climbCopy}>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbTitle}>
                     {index + 1}. {climb.grade}
                   </Text>
-                  <Text style={styles.climbMeta}>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbMeta}>
                     {formatColourDisplay(climb.colour)} - {climb.completed ? 'Sent it' : 'Another time'}
                   </Text>
                 </View>
@@ -209,10 +209,10 @@ export function SessionDetailScreen() {
                   <Text style={styles.statusText}>{climb.completed ? 'Sent' : 'Tried'}</Text>
                 </View>
               </View>
-              <Text style={styles.climbDetail}>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.climbDetail}>
                 {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'} - {formatDuration(climb.durationSeconds)}
               </Text>
-              <Text style={styles.climbDetail}>
+              <Text ellipsizeMode="tail" numberOfLines={2} style={styles.climbDetail}>
                 {formatFeatureDisplay(climb.holdTypes)}
               </Text>
             </AppCard>
@@ -251,6 +251,7 @@ const styles = StyleSheet.create({
   },
   cardHeaderCopy: {
     flex: 1,
+    minWidth: 0,
   },
   cardHeaderRow: {
     alignItems: 'flex-start',
@@ -266,6 +267,10 @@ const styles = StyleSheet.create({
   },
   climbCard: {
     padding: spacing.lg,
+  },
+  climbCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   climbDetail: {
     color: colors.muted,
@@ -340,11 +345,11 @@ const styles = StyleSheet.create({
   metadataRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.xs,
   },
   metadataText: {
     color: colors.muted,
+    flex: 1,
     fontFamily: fonts.semiBold,
     fontSize: 14,
     fontWeight: '600',

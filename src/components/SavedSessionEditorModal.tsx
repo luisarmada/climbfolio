@@ -6,6 +6,7 @@ import { colors, fonts, radius, spacing } from '../design/tokens';
 import { ClimbingLocation, ClimbingLocationType } from '../domain/models';
 import { getSessionDisplayName, sessionService } from '../features/sessions';
 import { SessionSummary, sessionSummaryService } from '../features/summaries';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 import { AppButton } from './AppButton';
 import { AppCard } from './AppCard';
 import { DismissibleModal } from './DismissibleModal';
@@ -144,7 +145,7 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
           <View style={styles.modalHeader}>
             <View style={styles.modalTitleCopy}>
               <Text style={styles.modalTitle}>Edit session</Text>
-              <Text style={styles.modalSubtitle}>{getSessionDisplayName(summary.session)}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.modalSubtitle}>{getSessionDisplayName(summary.session)}</Text>
             </View>
             <TouchableOpacity
               activeOpacity={0.76}
@@ -163,7 +164,12 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
                 <Text style={styles.inputLabel}>Name</Text>
                 <TextInput
                   accessibilityLabel="Session name"
-                  onChangeText={(name) => setDraft((currentDraft) => (currentDraft ? { ...currentDraft, name } : currentDraft))}
+                  maxLength={inputLimits.sessionName}
+                  onChangeText={(name) =>
+                    setDraft((currentDraft) =>
+                      currentDraft ? { ...currentDraft, name: limitInput(name, inputLimits.sessionName) } : currentDraft,
+                    )
+                  }
                   placeholder={getSessionDisplayName(summary.session)}
                   placeholderTextColor={colors.muted}
                   style={styles.textInput}
@@ -175,8 +181,15 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
                 <Text style={styles.inputLabel}>Description</Text>
                 <TextInput
                   accessibilityLabel="Session description"
+                  maxLength={inputLimits.sessionDescription}
                   multiline
-                  onChangeText={(description) => setDraft((currentDraft) => (currentDraft ? { ...currentDraft, description } : currentDraft))}
+                  onChangeText={(description) =>
+                    setDraft((currentDraft) =>
+                      currentDraft
+                        ? { ...currentDraft, description: limitInput(description, inputLimits.sessionDescription) }
+                        : currentDraft,
+                    )
+                  }
                   placeholder="Notes, beta, highlights, or anything worth remembering."
                   placeholderTextColor={colors.muted}
                   style={[styles.textInput, styles.descriptionInput]}
@@ -195,8 +208,8 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
                   style={styles.locationSelector}
                 >
                   <View style={styles.locationSelectorCopy}>
-                    <Text style={styles.locationSelectorValue}>{selectedLocationLabel}</Text>
-                    <Text style={styles.locationSelectorMeta}>
+                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationSelectorValue}>{selectedLocationLabel}</Text>
+                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationSelectorMeta}>
                       {draft.locationName && draft.locationType ? getLocationTypeLabel(draft.locationType) : 'Choose a saved location'}
                     </Text>
                   </View>
@@ -377,6 +390,7 @@ const styles = StyleSheet.create({
   },
   locationSelectorCopy: {
     flex: 1,
+    minWidth: 0,
   },
   locationSelectorMeta: {
     color: colors.muted,
@@ -419,6 +433,7 @@ const styles = StyleSheet.create({
   },
   modalTitleCopy: {
     flex: 1,
+    minWidth: 0,
   },
   textInput: {
     backgroundColor: colors.surfaceSoft,

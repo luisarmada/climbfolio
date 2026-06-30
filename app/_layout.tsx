@@ -1,22 +1,31 @@
-import {
-  Manrope_400Regular,
-  Manrope_500Medium,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-  Manrope_800ExtraBold,
-} from '@expo-google-fonts/manrope';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Text, TextInput } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { colors, fonts } from '../src/design/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+declare const require: (path: string) => number;
+
+const manropeFonts = {
+  Manrope_400Regular: require('../assets/fonts/Manrope_400Regular.ttf'),
+  Manrope_500Medium: require('../assets/fonts/Manrope_500Medium.ttf'),
+  Manrope_600SemiBold: require('../assets/fonts/Manrope_600SemiBold.ttf'),
+  Manrope_700Bold: require('../assets/fonts/Manrope_700Bold.ttf'),
+  Manrope_800ExtraBold: require('../assets/fonts/Manrope_800ExtraBold.ttf'),
+};
+
+let defaultFontApplied = false;
+
 function applyDefaultFont() {
+  if (defaultFontApplied) {
+    return;
+  }
+
   const defaultText = Text as typeof Text & { defaultProps?: { style?: unknown } };
   const defaultTextInput = TextInput as typeof TextInput & { defaultProps?: { style?: unknown } };
 
@@ -25,26 +34,23 @@ function applyDefaultFont() {
 
   defaultTextInput.defaultProps = defaultTextInput.defaultProps ?? {};
   defaultTextInput.defaultProps.style = [defaultTextInput.defaultProps.style, { fontFamily: fonts.regular }];
+
+  defaultFontApplied = true;
 }
 
+applyDefaultFont();
+
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    Manrope_400Regular,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
-    Manrope_800ExtraBold,
-  });
+  const [fontsLoaded] = useFonts(manropeFonts);
 
   useEffect(() => {
     if (fontsLoaded) {
-      applyDefaultFont();
       void SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
 
   if (!fontsLoaded) {
-    return null;
+    return <View style={styles.loading} />;
   }
 
   return (
@@ -64,3 +70,10 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    backgroundColor: colors.chalk,
+    flex: 1,
+  },
+});

@@ -2,6 +2,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { StyleProp, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { colors, fonts, radius, spacing } from '../design/tokens';
 import { AppCard } from './AppCard';
+import { ProfilePicture } from './ProfilePicture';
 
 export type ProfileAccountCardStat = {
   label: string;
@@ -10,24 +11,30 @@ export type ProfileAccountCardStat = {
 
 type ProfileAccountCardProps = {
   badgeText: string;
-  climberType: string;
   displayName: string;
   editAccessibilityLabel?: string;
   onEditPress?: () => void;
+  onProfilePicturePress?: () => void;
+  profilePictureAccessibilityLabel?: string;
+  profilePictureId?: string | null;
   stats?: ProfileAccountCardStat[];
   streakCount?: number;
   style?: StyleProp<ViewStyle>;
+  tagline: string;
 };
 
 export function ProfileAccountCard({
   badgeText,
-  climberType,
   displayName,
   editAccessibilityLabel = 'Edit profile details',
   onEditPress,
+  onProfilePicturePress,
+  profilePictureAccessibilityLabel,
+  profilePictureId,
   stats,
   streakCount = 0,
   style,
+  tagline,
 }: ProfileAccountCardProps) {
   return (
     <AppCard style={[styles.card, style]}>
@@ -44,17 +51,17 @@ export function ProfileAccountCard({
       ) : null}
 
       <View style={styles.topRow}>
-        <View style={styles.avatar}>
-          <View style={styles.avatarBody} />
-          <View style={styles.avatarHead} />
-          <View style={[styles.avatarHold, styles.avatarHoldOne]} />
-          <View style={[styles.avatarHold, styles.avatarHoldTwo]} />
-        </View>
+        <ProfilePicture
+          accessibilityLabel={profilePictureAccessibilityLabel}
+          onPress={onProfilePicturePress}
+          profilePictureId={profilePictureId}
+          showEditBadge={Boolean(onProfilePicturePress)}
+        />
         <View style={styles.copy}>
-          <Text style={styles.name}>{displayName}</Text>
-          <Text style={styles.type}>{climberType}</Text>
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.name}>{displayName}</Text>
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.type}>{tagline}</Text>
           <View style={styles.badgeRow}>
-            <Text style={styles.bestBadge}>{badgeText}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.bestBadge}>{badgeText}</Text>
             {streakCount > 0 ? (
               <View accessibilityLabel={`${streakCount} week streak`} style={styles.streakBadge}>
                 <Text style={styles.streakBadgeText}>{streakCount}</Text>
@@ -69,8 +76,8 @@ export function ProfileAccountCard({
         <View style={styles.stats}>
           {stats.map((stat) => (
             <View key={stat.label} style={styles.stat}>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statValue}>{stat.value}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statLabel}>{stat.label}</Text>
             </View>
           ))}
         </View>
@@ -80,56 +87,12 @@ export function ProfileAccountCard({
 }
 
 const styles = StyleSheet.create({
-  avatar: {
-    backgroundColor: '#E6DDD0',
-    borderRadius: radius.pill,
-    height: 96,
-    overflow: 'hidden',
-    position: 'relative',
-    width: 96,
-  },
-  avatarBody: {
-    backgroundColor: '#5DB194',
-    borderRadius: 24,
-    height: 66,
-    left: 39,
-    position: 'absolute',
-    top: 26,
-    transform: [{ rotate: '18deg' }],
-    width: 36,
-  },
-  avatarHead: {
-    backgroundColor: '#232323',
-    borderRadius: radius.pill,
-    height: 22,
-    left: 42,
-    position: 'absolute',
-    top: 16,
-    width: 22,
-  },
-  avatarHold: {
-    backgroundColor: '#F07C43',
-    borderRadius: radius.pill,
-    height: 16,
-    position: 'absolute',
-    width: 22,
-  },
-  avatarHoldOne: {
-    right: 18,
-    top: 21,
-    transform: [{ rotate: '-20deg' }],
-  },
-  avatarHoldTwo: {
-    backgroundColor: colors.lavender,
-    bottom: 35,
-    right: 25,
-    transform: [{ rotate: '20deg' }],
-  },
   badgeRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+    minWidth: 0,
   },
   bestBadge: {
     alignSelf: 'flex-start',
@@ -139,6 +102,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
     fontSize: 13,
     fontWeight: '800',
+    maxWidth: '100%',
     overflow: 'hidden',
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
@@ -149,6 +113,7 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
+    minWidth: 0,
     paddingRight: spacing.xl,
   },
   editButton: {
@@ -171,6 +136,7 @@ const styles = StyleSheet.create({
   },
   stat: {
     flex: 1,
+    minWidth: 0,
   },
   statLabel: {
     color: colors.muted,
@@ -214,6 +180,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.lg,
+    minWidth: 0,
   },
   type: {
     color: colors.muted,

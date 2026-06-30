@@ -201,7 +201,7 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
         {showBottomNav ? (
           <>
             <ActiveSessionBanner onLogClimb={() => setIsBannerClimbPickerVisible(true)} />
-            <NewClimbPickerModal onDismiss={() => setIsBannerClimbPickerVisible(false)} visible={isBannerClimbPickerVisible} />
+            <NewClimbPickerModal allowQuickAdd onDismiss={() => setIsBannerClimbPickerVisible(false)} visible={isBannerClimbPickerVisible} />
             <BottomNav onProfilePress={returnToProfile} />
           </>
         ) : null}

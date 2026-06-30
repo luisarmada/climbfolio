@@ -149,6 +149,23 @@ export async function runMigrations(database: DatabaseClient) {
       `);
     }
 
+    if (currentVersion > 0 && currentVersion < 12) {
+      await database.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active
+        ON sessions(COALESCE(end_time, '__active__'))
+        WHERE end_time IS NULL AND deleted_at IS NULL;
+      `);
+      await database.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_climbs_one_active_per_session
+        ON climbs(session_id, COALESCE(end_time, '__active__'))
+        WHERE end_time IS NULL AND deleted_at IS NULL;
+      `);
+    }
+
+    if (currentVersion > 0 && currentVersion < 13) {
+      await database.execAsync('ALTER TABLE user_profile ADD COLUMN profile_picture_uri TEXT;');
+    }
+
     await database.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?);',
       [schemaVersion, nowIso()],

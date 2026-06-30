@@ -178,8 +178,6 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.charcoal,
-    fontSize: 38,
-    lineHeight: 42,
   },
   titleBlock: {
     flex: 1,

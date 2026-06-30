@@ -1,8 +1,9 @@
 import { locationRepository } from '../../data/repositories';
 import { ClimbingLocation, CreateClimbingLocationInput, UpdateClimbingLocationInput } from '../../domain/models';
+import { inputLimits, normalizeSingleLineInput } from '../../utils/inputValidation';
 
 function normalizeLocationName(name: string) {
-  return name.trim().replace(/\s+/g, ' ');
+  return normalizeSingleLineInput(name, inputLimits.locationName);
 }
 
 function normalizeLocationInput<T extends CreateClimbingLocationInput | UpdateClimbingLocationInput>(input: T): T {

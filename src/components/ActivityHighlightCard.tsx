@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, spacing } from '../design/tokens';
 import { AppCard } from './AppCard';
@@ -11,7 +12,10 @@ type HighlightStat = {
 type ActivityHighlightCardProps = {
   actionAccessibilityLabel?: string;
   actionIcon?: keyof typeof Feather.glyphMap;
+  detailDescription?: string | null;
+  detailTitle?: string;
   icon?: keyof typeof Feather.glyphMap;
+  leadingVisual?: ReactNode;
   onActionPress?: () => void;
   onPress?: () => void;
   stats: HighlightStat[];
@@ -22,13 +26,18 @@ type ActivityHighlightCardProps = {
 export function ActivityHighlightCard({
   actionAccessibilityLabel,
   actionIcon,
+  detailDescription,
+  detailTitle,
   icon,
+  leadingVisual,
   onActionPress,
   onPress,
   stats,
   subtitle,
   title,
 }: ActivityHighlightCardProps) {
+  const hasDetails = Boolean(detailTitle || detailDescription);
+
   return (
     <AppCard style={styles.card}>
       <View style={styles.contentRow}>
@@ -41,22 +50,30 @@ export function ActivityHighlightCard({
           style={styles.mainPressArea}
         >
           <View style={styles.topRow}>
+            {leadingVisual ? <View style={styles.leadingVisual}>{leadingVisual}</View> : null}
             {icon ? (
               <View style={styles.iconCircle}>
                 <Feather name={icon} size={19} color={colors.charcoal} />
               </View>
             ) : null}
             <View style={styles.copy}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.subtitle}>{subtitle}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.title}>{title}</Text>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.subtitle}>{subtitle}</Text>
             </View>
           </View>
 
-          <View style={styles.statsRow}>
+          {hasDetails ? (
+            <View style={styles.detailBlock}>
+              {detailTitle ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailTitle}>{detailTitle}</Text> : null}
+              {detailDescription ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailDescription}>{detailDescription}</Text> : null}
+            </View>
+          ) : null}
+
+          <View style={[styles.statsRow, hasDetails && styles.statsRowAfterDetails]}>
             {stats.map((stat) => (
               <View key={`${stat.label}-${stat.value}`} style={styles.stat}>
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statValue}>{stat.value}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statLabel}>{stat.label}</Text>
               </View>
             ))}
           </View>
@@ -96,6 +113,7 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
+    minWidth: 0,
   },
   iconCircle: {
     alignItems: 'center',
@@ -105,11 +123,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 38,
   },
+  detailBlock: {
+    borderTopColor: colors.stone,
+    borderTopWidth: 1,
+    gap: 3,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  detailDescription: {
+    color: colors.muted,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  detailTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  leadingVisual: {
+    height: 38,
+    width: 38,
+  },
   mainPressArea: {
     flex: 1,
+    minWidth: 0,
   },
   stat: {
     flex: 1,
+    minWidth: 0,
   },
   statLabel: {
     color: colors.muted,
@@ -125,6 +168,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.lg,
     paddingTop: spacing.md,
+  },
+  statsRowAfterDetails: {
+    borderTopWidth: 0,
+    marginTop: spacing.md,
+    paddingTop: 0,
   },
   statValue: {
     color: colors.charcoal,
@@ -149,5 +197,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.md,
+    minWidth: 0,
   },
 });

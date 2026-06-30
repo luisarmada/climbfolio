@@ -119,10 +119,10 @@ export function CollectionCellSessionsScreen() {
           </View>
           <View style={styles.cellHeroCopy}>
             <Text style={styles.cellLabel}>Collection cell</Text>
-            <Text style={styles.cellTitle}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.cellTitle}>
               {feature} {grade}
             </Text>
-            <Text style={styles.cellSubtitle}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.cellSubtitle}>
               {selectedScaleOption.label} | {locationName}
             </Text>
           </View>
@@ -205,6 +205,7 @@ const styles = StyleSheet.create({
   },
   cellHeroCopy: {
     flex: 1,
+    minWidth: 0,
   },
   cellHeroTopRow: {
     alignItems: 'center',

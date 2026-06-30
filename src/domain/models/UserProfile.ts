@@ -3,8 +3,9 @@ export type ProfileBadgePreference = 'best_grade';
 export type UserProfile = {
   id: string;
   displayName: string;
-  climberType: string;
+  tagline: string;
   badgePreference: ProfileBadgePreference;
+  profilePictureId: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -12,6 +13,7 @@ export type UserProfile = {
 
 export type UpdateUserProfileInput = {
   badgePreference?: ProfileBadgePreference;
-  climberType?: string;
   displayName?: string;
+  profilePictureId?: string;
+  tagline?: string;
 };

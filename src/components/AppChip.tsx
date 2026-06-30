@@ -21,7 +21,7 @@ export function AppChip({ accentColor, label, onPress, selected = false, style }
       style={[styles.chip, selected && styles.selectedChip, style]}
     >
       {accentColor ? <View style={[styles.dot, { backgroundColor: accentColor }]} /> : null}
-      <Text style={[styles.label, selected && styles.selectedLabel]}>{label}</Text>
+      <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.label, selected && styles.selectedLabel]}>{label}</Text>
       {selected ? <Feather name="check" size={14} color={colors.white} /> : null}
     </TouchableOpacity>
   );
@@ -36,6 +36,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.xs,
+    maxWidth: '100%',
     minHeight: 42,
     paddingHorizontal: spacing.md,
   },
@@ -52,6 +53,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
   },

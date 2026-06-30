@@ -4,8 +4,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
+import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { DismissibleModal } from '../components/DismissibleModal';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
+import { ProfilePicture } from '../components/ProfilePicture';
 import { SavedSessionEditorModal } from '../components/SavedSessionEditorModal';
 import { SectionHeader } from '../components/SectionHeader';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
@@ -29,24 +32,25 @@ type DashboardAction = {
   href?: '/calendar' | '/collection';
   icon: FeatherName;
   label: string;
+  modal?: 'betas';
 };
 
 const dashboardActions: DashboardAction[] = [
   { accent: colors.mint, icon: 'bar-chart-2', label: 'Statistics' },
+  { accent: colors.sky, href: '/calendar', icon: 'calendar', label: 'Calendar' },
+  { accent: colors.lavender, icon: 'video', label: 'Betas', modal: 'betas' },
   { accent: colors.amber, href: '/collection', icon: 'grid', label: 'Collection' },
-  { accent: colors.lavender, href: '/calendar', icon: 'calendar', label: 'Calendar' },
 ];
 
 function formatSessionHistorySubtitle(summary: SessionSummary) {
   const date = formatSessionDate(summary.session.startTime);
   const time = formatSessionTime(summary.session.startTime);
-  const dateTime = `${date}, ${time}`;
 
-  if (summary.session.locationName) {
-    return `${dateTime} @ ${summary.session.locationName}`;
-  }
+  return `${date}, ${time}`;
+}
 
-  return dateTime;
+function formatSessionHistoryTitle(displayName: string, summary: SessionSummary) {
+  return summary.session.locationName ? `${displayName} @ ${summary.session.locationName}` : displayName;
 }
 
 let cachedProfileSummaries: SessionSummary[] | null = null;
@@ -60,6 +64,7 @@ export function ProfileScreen() {
   const [summaries, setSummaries] = useState<SessionSummary[]>(cachedProfileSummaries ?? []);
   const [editingSummary, setEditingSummary] = useState<SessionSummary | null>(null);
   const [isLoading, setIsLoading] = useState(cachedProfileSummaries === null);
+  const [isBetasModalVisible, setIsBetasModalVisible] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let isMounted = true;
@@ -93,7 +98,7 @@ export function ProfileScreen() {
   const weeklyStreak = calculateWeeklyStreak(summaries);
   const selectedScale = resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' });
   const displayName = profile?.displayName ?? 'Local Climber';
-  const climberType = profile?.climberType ?? 'Indoor boulderer';
+  const tagline = profile?.tagline ?? 'Indoor boulderer';
   const badgeText = formatProfileBadge(summaries, selectedScale);
   const replaceSessionSummary = useCallback((nextSummary: SessionSummary) => {
     setSummaries((currentSummaries) => {
@@ -129,15 +134,16 @@ export function ProfileScreen() {
 
       <ProfileAccountCard
         badgeText={badgeText}
-        climberType={climberType}
         displayName={displayName}
         onEditPress={() => router.push('/settings/profile')}
+        profilePictureId={profile?.profilePictureId}
         stats={[
           { label: 'Sessions', value: String(aggregateStats.sessions) },
           { label: 'Followers', value: '0' },
           { label: 'Following', value: '0' },
         ]}
         streakCount={weeklyStreak}
+        tagline={tagline}
       />
 
       <View style={styles.dashboardHeader}>
@@ -147,14 +153,15 @@ export function ProfileScreen() {
       <View style={styles.dashboardGrid}>
         {dashboardActions.map((action) => {
           const href = action.href;
+          const onPress = href ? () => router.push(href) : action.modal === 'betas' ? () => setIsBetasModalVisible(true) : undefined;
 
           return (
             <TouchableOpacity
               activeOpacity={0.72}
-              accessibilityLabel={href ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
+              accessibilityLabel={onPress ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
               accessibilityRole="button"
               key={action.label}
-              onPress={href ? () => router.push(href) : undefined}
+              onPress={onPress}
               style={styles.dashboardButton}
             >
               <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
@@ -186,7 +193,10 @@ export function ProfileScreen() {
             <ActivityHighlightCard
               actionAccessibilityLabel={`Open actions for ${getSessionDisplayName(summary.session)}`}
               actionIcon="more-horizontal"
+              detailDescription={summary.session.description}
+              detailTitle={getSessionDisplayName(summary.session)}
               key={summary.session.id}
+              leadingVisual={<ProfilePicture profilePictureId={profile?.profilePictureId} size={38} />}
               onActionPress={() => setEditingSummary(summary)}
               onPress={() => router.push(`/session/${summary.session.id}`)}
               stats={[
@@ -195,7 +205,7 @@ export function ProfileScreen() {
                 { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
               ]}
               subtitle={formatSessionHistorySubtitle(summary)}
-              title={getSessionDisplayName(summary.session)}
+              title={formatSessionHistoryTitle(displayName, summary)}
             />
           ))}
         </View>
@@ -208,11 +218,104 @@ export function ProfileScreen() {
         summary={editingSummary}
         visible={Boolean(editingSummary)}
       />
+
+      <DismissibleModal onDismiss={() => setIsBetasModalVisible(false)} visible={isBetasModalVisible}>
+        <AppCard style={styles.betasCard}>
+          <View style={styles.betasIcon}>
+            <Feather name="video" size={24} color={colors.charcoal} />
+          </View>
+          <Text style={styles.betasTitle}>Betas are coming soon</Text>
+          <Text style={styles.betasCopy}>
+            A local video library for climbs you want to remember, study, and share.
+          </Text>
+
+          <View style={styles.betasFeatureList}>
+            <View style={styles.betasFeatureRow}>
+              <Feather name="upload-cloud" size={17} color={colors.charcoal} />
+              <Text style={styles.betasFeatureText}>Upload and store beta videos against climbs, grades, locations, and notes.</Text>
+            </View>
+            <View style={styles.betasFeatureRow}>
+              <Feather name="sliders" size={17} color={colors.charcoal} />
+              <Text style={styles.betasFeatureText}>Sort by grade, session, project, wall angle, and the details that matter later.</Text>
+            </View>
+            <View style={styles.betasFeatureRow}>
+              <Feather name="share" size={17} color={colors.charcoal} />
+              <Text style={styles.betasFeatureText}>Export polished reel-format clips for Instagram and other socials.</Text>
+            </View>
+          </View>
+
+          <Text style={styles.betasSupportCopy}>Supporting development helps bring Betas to life sooner.</Text>
+          <AppButton icon="check" onPress={() => setIsBetasModalVisible(false)} title="Got it" />
+        </AppCard>
+      </DismissibleModal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  betasCard: {
+    alignItems: 'center',
+    maxWidth: 430,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  betasCopy: {
+    color: colors.muted,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 21,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  betasFeatureList: {
+    alignSelf: 'stretch',
+    gap: spacing.sm,
+    marginVertical: spacing.xl,
+  },
+  betasFeatureRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  betasFeatureText: {
+    color: colors.charcoal,
+    flex: 1,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  betasIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.sky,
+    borderRadius: radius.pill,
+    height: 58,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    width: 58,
+  },
+  betasSupportCopy: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  betasTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
   content: {
     paddingBottom: 130,
     paddingHorizontal: spacing.xxl,
@@ -224,7 +327,8 @@ const styles = StyleSheet.create({
     borderColor: colors.stone,
     borderRadius: radius.xl,
     borderWidth: 1,
-    flex: 1,
+    flexBasis: '48%',
+    flexGrow: 1,
     gap: spacing.sm,
     justifyContent: 'center',
     minHeight: 86,
@@ -235,13 +339,14 @@ const styles = StyleSheet.create({
   dashboardButtonText: {
     color: colors.charcoal,
     fontFamily: fonts.extraBold,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
-    lineHeight: 16,
+    lineHeight: 18,
     textAlign: 'center',
   },
   dashboardGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   dashboardHeader: {
@@ -256,7 +361,7 @@ const styles = StyleSheet.create({
     width: 42,
   },
   dashboardTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
   },
   emptyCopy: {

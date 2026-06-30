@@ -17,6 +17,7 @@ type NewClimbDraft = {
 };
 
 type NewClimbPickerModalProps = {
+  allowQuickAdd?: boolean;
   onDismiss: () => void;
   visible: boolean;
 };
@@ -51,10 +52,11 @@ function getSessionScale(activeSession: Session): GradingScaleSnapshot {
   };
 }
 
-export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalProps) {
+export function NewClimbPickerModal({ allowQuickAdd = false, onDismiss, visible }: NewClimbPickerModalProps) {
   const activeSession = useActiveSessionStore((state) => state.activeSession);
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
+  const quickAddWarmUpClimb = useActiveSessionStore((state) => state.quickAddWarmUpClimb);
   const startClimb = useActiveSessionStore((state) => state.startClimb);
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
@@ -92,11 +94,16 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
   const [selectedScaleKey, setSelectedScaleKey] = useState(sessionDefaultScaleKey);
   const selectedScale = gradeScaleOptions.find((option) => option.key === selectedScaleKey)?.scale ?? gradeScaleOptions[0]?.scale ?? builtInGradingScales[0]!;
   const selectedGradeOptions = selectedScale.gradingScaleGrades.length ? selectedScale.gradingScaleGrades : vScaleGrades;
+  const sessionQuickGradeOptions = activeSession?.gradingScaleGrades.length ? activeSession.gradingScaleGrades : vScaleGrades;
+  const sessionQuickScale = activeSession ? getSessionScale(activeSession) : builtInGradingScales[0]!;
   const selectedScaleIsTape = Boolean(selectedScale.gradingScaleIsTape);
   const [newClimbDraft, setNewClimbDraft] = useState<NewClimbDraft>({ colours: [], grade: selectedGradeOptions[0] ?? 'V0' });
+  const [selectedQuickGrade, setSelectedQuickGrade] = useState(sessionQuickGradeOptions[0] ?? 'V0');
   const [gradeTypePickerExpanded, setGradeTypePickerExpanded] = useState(false);
   const newClimbGradeIndex = Math.max(0, selectedGradeOptions.indexOf(newClimbDraft.grade));
+  const selectedQuickGradeIndex = Math.max(0, sessionQuickGradeOptions.indexOf(selectedQuickGrade));
   const canStartNewClimb = Boolean(activeSession && !activeClimb && newClimbDraft.grade);
+  const canQuickAddClimb = Boolean(allowQuickAdd && activeSession && !activeClimb && selectedQuickGrade);
 
   useEffect(() => {
     if (visible) {
@@ -120,7 +127,14 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
     setSelectedScaleKey(sessionDefaultScaleKey);
     setGradeTypePickerExpanded(false);
     setNewClimbDraft({ colours: [], grade: gradeScaleOptions[0]?.scale.gradingScaleGrades[0] ?? 'V0' });
-  }, [gradeScaleOptions, visible]);
+    setSelectedQuickGrade(sessionQuickGradeOptions[0] ?? 'V0');
+  }, [gradeScaleOptions, sessionQuickGradeOptions, visible]);
+
+  useEffect(() => {
+    if (!sessionQuickGradeOptions.includes(selectedQuickGrade)) {
+      setSelectedQuickGrade(sessionQuickGradeOptions[0] ?? 'V0');
+    }
+  }, [selectedQuickGrade, sessionQuickGradeOptions]);
 
   function toggleNewClimbColour(colour: string) {
     setNewClimbDraft((draft) => {
@@ -150,6 +164,15 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
     onDismiss();
   }
 
+  async function confirmQuickAddClimb() {
+    if (!canQuickAddClimb) {
+      return;
+    }
+
+    await quickAddWarmUpClimb(selectedQuickGrade);
+    onDismiss();
+  }
+
   return (
     <DismissibleModal onDismiss={onDismiss} visible={visible}>
       <AppCard style={styles.editCard}>
@@ -167,6 +190,64 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
         </View>
 
         <ScrollView contentContainerStyle={styles.editContent}>
+          {allowQuickAdd ? (
+            <View style={styles.quickSection}>
+              <View>
+                <Text style={styles.quickTitle}>Quick climb</Text>
+                <Text style={styles.quickHint}>Log a finished climb without starting a climb timer.</Text>
+              </View>
+              <View style={styles.quickAddRow}>
+                <View style={styles.quickStepper}>
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel="Decrease quick climb grade"
+                    accessibilityRole="button"
+                    disabled={selectedQuickGradeIndex === 0}
+                    onPress={() => setSelectedQuickGrade(sessionQuickGradeOptions[Math.max(0, selectedQuickGradeIndex - 1)] ?? selectedQuickGrade)}
+                    style={[styles.quickGradeButton, selectedQuickGradeIndex === 0 && styles.disabledStepperButton]}
+                  >
+                    <Feather name="minus" size={18} color="#B85A3B" />
+                  </TouchableOpacity>
+                  <View style={styles.quickGradeValueWrap}>
+                    {sessionQuickScale.gradingScaleIsTape ? (
+                      <View style={[styles.tapeGradeDotSmall, { backgroundColor: getGradeColourValue(selectedQuickGrade) ?? colors.stone }]} />
+                    ) : null}
+                    <View>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.quickGradeValue}>{sessionQuickScale.gradingScaleIsTape ? `${selectedQuickGrade} Tape` : selectedQuickGrade}</Text>
+                      {sessionQuickScale.gradingScaleIsTape ? (
+                        <Text style={styles.quickGradeMeta}>Est. {formatEstimatedVGradeAverage(selectedQuickGrade, sessionQuickScale)}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel="Increase quick climb grade"
+                    accessibilityRole="button"
+                    disabled={selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1}
+                    onPress={() =>
+                      setSelectedQuickGrade(sessionQuickGradeOptions[Math.min(sessionQuickGradeOptions.length - 1, selectedQuickGradeIndex + 1)] ?? selectedQuickGrade)
+                    }
+                    style={[styles.quickGradeButton, selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1 && styles.disabledStepperButton]}
+                  >
+                    <Feather name="plus" size={18} color={colors.charcoal} />
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  accessibilityLabel="Quick add climb"
+                  accessibilityRole="button"
+                  disabled={isLoading || !canQuickAddClimb}
+                  onPress={() => void confirmQuickAddClimb()}
+                  style={[styles.quickAddButton, (isLoading || !canQuickAddClimb) && styles.disabledEditOption]}
+                >
+                  <Feather name="plus" size={18} color={colors.white} />
+                  <Feather name="zap" size={16} color={colors.white} />
+                  <Text style={styles.quickAddButtonText}>{isLoading ? 'Adding...' : 'Quick Add'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.gradeHeaderRow}>
             <Text style={styles.editLabel}>Grade</Text>
             <TouchableOpacity
@@ -197,7 +278,7 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
                     style={[styles.tapeGradeOption, selected && styles.selectedEditOption]}
                   >
                     <View style={[styles.tapeGradeDotLarge, { backgroundColor: getGradeColourValue(grade) ?? colors.stone }]} />
-                    <Text style={styles.tapeGradeOptionText}>{grade}</Text>
+                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.tapeGradeOptionText}>{grade}</Text>
                     <Text style={styles.tapeGradeOptionEstimate}>
                       Est. {formatEstimatedVGradeAverage(grade, selectedScale)}
                     </Text>
@@ -223,7 +304,7 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
                 <Feather name="minus" size={18} color="#B85A3B" />
               </TouchableOpacity>
               <View style={styles.newClimbGradeValueWrap}>
-                <Text style={styles.newClimbGradeValue}>{newClimbDraft.grade}</Text>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.newClimbGradeValue}>{newClimbDraft.grade}</Text>
               </View>
               <TouchableOpacity
                 activeOpacity={0.76}
@@ -261,7 +342,7 @@ export function NewClimbPickerModal({ onDismiss, visible }: NewClimbPickerModalP
                   style={[styles.gradeTypeOption, selected && styles.selectedEditOption]}
                 >
                   <View>
-                    <Text style={styles.gradeTypeName}>{option.label}</Text>
+                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradeTypeName}>{option.label}</Text>
                   </View>
                   {selected ? <Feather name="check" size={18} color={colors.charcoal} /> : null}
                 </TouchableOpacity>
@@ -418,6 +499,7 @@ const styles = StyleSheet.create({
   },
   gradeTypeName: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -465,11 +547,100 @@ const styles = StyleSheet.create({
   newClimbGradeValueWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    maxWidth: '54%',
     minWidth: 88,
+  },
+  quickAddButton: {
+    alignItems: 'center',
+    backgroundColor: colors.charcoal,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  quickAddButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  quickAddRow: {
+    gap: spacing.sm,
+  },
+  quickGradeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  quickGradeMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  quickGradeValue: {
+    color: colors.charcoal,
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  quickGradeValueWrap: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  quickHint: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  quickSection: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  quickStepper: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 62,
+    padding: spacing.sm,
+  },
+  quickTitle: {
+    color: colors.charcoal,
+    fontSize: 15,
+    fontWeight: '900',
   },
   selectedEditOption: {
     backgroundColor: colors.mint,
     borderColor: colors.charcoal,
+  },
+  tapeGradeDotSmall: {
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 16,
+    width: 16,
   },
   tapeGradeDotLarge: {
     borderColor: colors.stone,

@@ -1,4 +1,5 @@
 import { ProfileBadgePreference, UpdateUserProfileInput, UserProfile } from '../../domain/models';
+import { defaultProfilePictureId } from '../../features/profile/profilePictures';
 import { nowIso } from '../../utils/dates';
 import { initializeDatabase } from '../db/client';
 
@@ -9,6 +10,7 @@ type UserProfileRow = {
   display_name: string;
   climber_type: string;
   badge_preference: string;
+  profile_picture_uri?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -21,18 +23,20 @@ export type ProfileRepository = {
 
 const defaultProfile = {
   badgePreference: 'best_grade' as ProfileBadgePreference,
-  climberType: 'Indoor boulderer',
   displayName: 'Local Climber',
+  profilePictureId: defaultProfilePictureId,
+  tagline: 'Indoor boulderer',
 };
 
 function mapProfile(row: UserProfileRow): UserProfile {
   return {
     id: row.id,
     badgePreference: defaultProfile.badgePreference,
-    climberType: row.climber_type,
     createdAt: row.created_at,
     deletedAt: row.deleted_at,
     displayName: row.display_name,
+    profilePictureId: row.profile_picture_uri ?? defaultProfile.profilePictureId,
+    tagline: row.climber_type,
     updatedAt: row.updated_at,
   };
 }
@@ -43,24 +47,26 @@ async function createDefaultProfile() {
   const profile: UserProfile = {
     id: localProfileId,
     badgePreference: defaultProfile.badgePreference,
-    climberType: defaultProfile.climberType,
     createdAt: timestamp,
     deletedAt: null,
     displayName: defaultProfile.displayName,
+    profilePictureId: defaultProfile.profilePictureId,
+    tagline: defaultProfile.tagline,
     updatedAt: timestamp,
   };
 
   await database.runAsync(
     `
       INSERT INTO user_profile (
-        id, display_name, climber_type, badge_preference, created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        id, display_name, climber_type, badge_preference, profile_picture_uri, created_at, updated_at, deleted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
     `,
     [
       profile.id,
       profile.displayName,
-      profile.climberType,
+      profile.tagline,
       profile.badgePreference,
+      profile.profilePictureId,
       profile.createdAt,
       profile.updatedAt,
       profile.deletedAt,
@@ -88,18 +94,19 @@ export const profileRepository: ProfileRepository = {
     const next: UserProfile = {
       ...current,
       badgePreference: defaultProfile.badgePreference,
-      climberType: input.climberType?.trim() || current.climberType,
       displayName: input.displayName?.trim() || current.displayName,
+      profilePictureId: input.profilePictureId?.trim() || current.profilePictureId,
+      tagline: input.tagline?.trim() || current.tagline,
       updatedAt,
     };
 
     await database.runAsync(
       `
         UPDATE user_profile
-        SET display_name = ?, climber_type = ?, badge_preference = ?, updated_at = ?
+        SET display_name = ?, climber_type = ?, badge_preference = ?, profile_picture_uri = ?, updated_at = ?
         WHERE id = ?;
       `,
-      [next.displayName, next.climberType, next.badgePreference, next.updatedAt, next.id],
+      [next.displayName, next.tagline, next.badgePreference, next.profilePictureId, next.updatedAt, next.id],
     );
 
     return next;

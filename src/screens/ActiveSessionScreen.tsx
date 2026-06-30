@@ -28,6 +28,7 @@ import {
 } from '../features/climbs';
 import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
+import { inputLimits, limitInput } from '../utils/inputValidation';
 
 const destructiveRed = '#B85A3B';
 const longSessionThresholdSeconds = 6 * 60 * 60;
@@ -142,7 +143,7 @@ function QuickClimbGroupCard({
     <AppCard style={styles.quickDoneCard}>
       <View style={styles.quickDoneMain}>
         <Feather name="zap" size={16} color={colors.charcoal} />
-        <Text style={styles.quickDoneGrade}>{count > 1 ? `${count}x ${gradeLabel}` : gradeLabel}</Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.quickDoneGrade}>{count > 1 ? `${count}x ${gradeLabel}` : gradeLabel}</Text>
         <Text style={styles.quickDoneLabel}>Quick climb</Text>
         <TouchableOpacity
           activeOpacity={0.76}
@@ -274,14 +275,14 @@ function TapeGradeLabel({
   scale?: { gradingScaleVGradeRanges: Record<string, { max: string; min: string }> };
 }) {
   if (!isTape || !scale) {
-    return <Text style={styles.stepperGrade}>{grade}</Text>;
+    return <Text ellipsizeMode="tail" numberOfLines={1} style={styles.stepperGrade}>{grade}</Text>;
   }
 
   return (
     <View style={styles.tapeStepperValue}>
       <View style={styles.tapeGradeMainRow}>
         <View style={[styles.tapeGradeDot, { backgroundColor: getGradeColourValue(grade) ?? colors.stone }]} />
-        <Text style={styles.stepperGrade}>{grade}</Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.stepperGrade}>{grade}</Text>
       </View>
       <Text style={styles.tapeGradeEstimate}>Est. {formatEstimatedVGradeAverage(grade, scale)}</Text>
     </View>
@@ -1181,7 +1182,8 @@ export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSes
                   }
                   autoCapitalize="none"
                   autoCorrect={false}
-                  onChangeText={setEditFeatureSearch}
+                  maxLength={inputLimits.featureSearch}
+                  onChangeText={(search) => setEditFeatureSearch(limitInput(search, inputLimits.featureSearch))}
                   placeholder="Search"
                   placeholderTextColor={colors.muted}
                   style={styles.featureSearchInput}
@@ -1267,10 +1269,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    ...typography.h2,
+    ...typography.compactTitle,
     color: colors.charcoal,
-    fontSize: 24,
-    lineHeight: 29,
   },
   subtitle: {
     color: colors.muted,
@@ -1358,6 +1358,7 @@ const styles = StyleSheet.create({
   },
   quickDoneGrade: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 18,
     fontWeight: '800',
   },
@@ -1382,6 +1383,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flex: 1,
     gap: spacing.sm,
+    minWidth: 0,
   },
   quickStepper: {
     alignItems: 'center',
@@ -1461,6 +1463,7 @@ const styles = StyleSheet.create({
   },
   stepperGrade: {
     color: colors.charcoal,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '800',
     minWidth: 48,

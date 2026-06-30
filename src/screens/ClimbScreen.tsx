@@ -92,8 +92,8 @@ export function ClimbScreen() {
         <View style={styles.locationHeader}>
           <View style={styles.locationCopy}>
             <Text style={styles.locationLabel}>Location</Text>
-            <Text style={styles.locationName}>{selectedLocation?.name ?? 'No location selected'}</Text>
-            <Text style={styles.locationDetail}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationName}>{selectedLocation?.name ?? 'No location selected'}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationDetail}>
               {selectedLocation
                 ? `${selectedLocation.type === 'gym' ? 'Gym' : selectedLocation.type === 'outdoor' ? 'Outdoor' : 'Other'} - ${getGradeScaleName(selectedLocation.gradingScaleId)}`
                 : 'Choose or add a place for this session.'}
@@ -145,7 +145,7 @@ export function ClimbScreen() {
                 <Feather name="x" size={18} color={colors.charcoal} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalCopy}>
+            <Text ellipsizeMode="tail" numberOfLines={3} style={styles.modalCopy}>
               {selectedLocation
                 ? `${selectedLocation.name} will be saved to this session.`
                 : 'No location is selected. You can choose one now or start without a location.'}
@@ -286,6 +286,7 @@ const styles = StyleSheet.create({
   },
   locationCopy: {
     flex: 1,
+    minWidth: 0,
   },
   locationDetail: {
     color: colors.muted,

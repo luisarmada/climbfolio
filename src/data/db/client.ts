@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { runMigrations } from './migrations';
 import { DatabaseClient } from './types';
-import { getWebDatabase } from './webDatabase';
+import { getWebDatabase, resetWebDatabaseForTests } from './webDatabase';
 
 const databaseName = 'climb_book.db';
 
@@ -32,7 +32,19 @@ export async function initializeDatabase() {
   return initializedPromise;
 }
 
+export async function withDatabaseTransaction<T>(task: () => Promise<T>): Promise<T> {
+  const database = await initializeDatabase();
+  let result: T | undefined;
+
+  await database.withTransactionAsync(async () => {
+    result = await task();
+  });
+
+  return result as T;
+}
+
 export function resetDatabaseClientForTests() {
   databasePromise = null;
   initializedPromise = null;
+  resetWebDatabaseForTests();
 }

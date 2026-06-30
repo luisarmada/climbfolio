@@ -1,44 +1,28 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
-import { DismissibleModal } from '../components/DismissibleModal';
+import { getLocationTypeLabel, LocationEditorModal } from '../components/LocationEditorModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { ClimbingLocation, ClimbingLocationType } from '../domain/models';
+import { ClimbingLocation } from '../domain/models';
 import { builtInGradingScales } from '../domain/gradeScales';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
 
-const locationTypes: { label: string; value: ClimbingLocationType }[] = [
-  { label: 'Gym', value: 'gym' },
-  { label: 'Outdoor', value: 'outdoor' },
-  { label: 'Other', value: 'other' },
-];
-
-function getTypeLabel(type: ClimbingLocationType) {
-  return locationTypes.find((option) => option.value === type)?.label ?? 'Other';
-}
-
 export function LocationSettingsScreen() {
   const router = useRouter();
   const { goBackWithTransition } = useProfileReturnTransition();
-  const createLocation = useLocationStore((state) => state.createLocation);
   const error = useLocationStore((state) => state.error);
-  const isLoading = useLocationStore((state) => state.isLoading);
   const loadLocations = useLocationStore((state) => state.loadLocations);
   const locations = useLocationStore((state) => state.locations);
   const removeLocation = useLocationStore((state) => state.removeLocation);
   const selectLocation = useLocationStore((state) => state.selectLocation);
-  const updateLocation = useLocationStore((state) => state.updateLocation);
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
-  const [draftGradeScaleId, setDraftGradeScaleId] = useState('v_scale');
-  const [draftName, setDraftName] = useState('');
-  const [draftType, setDraftType] = useState<ClimbingLocationType>('gym');
-  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [editingLocation, setEditingLocation] = useState<ClimbingLocation | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
 
   useEffect(() => {
@@ -53,54 +37,25 @@ export function LocationSettingsScreen() {
     ],
     [preferences?.customScales],
   );
-  const canSave = draftName.trim().length > 0 && Boolean(draftGradeScaleId);
 
   function getScaleName(scaleId: string) {
     return gradeScaleOptions.find((scale) => scale.id === scaleId)?.name ?? 'V Scale';
   }
 
   function openCreateEditor() {
-    setDraftGradeScaleId(preferences?.selectedGradingScaleId ?? 'v_scale');
-    setDraftName('');
-    setDraftType('gym');
-    setEditingLocationId(null);
+    setEditingLocation(null);
     setIsEditorVisible(true);
   }
 
   function openEditEditor(location: ClimbingLocation) {
-    setDraftGradeScaleId(location.gradingScaleId);
-    setDraftName(location.name);
-    setDraftType(location.type);
-    setEditingLocationId(location.id);
+    setEditingLocation(location);
     setIsEditorVisible(true);
   }
 
   function openCreateCustomGradeScale() {
     setIsEditorVisible(false);
+    setEditingLocation(null);
     router.push('/settings/climbing');
-  }
-
-  async function handleSaveLocation() {
-    if (!canSave) {
-      return;
-    }
-
-    if (editingLocationId) {
-      await updateLocation(editingLocationId, {
-        gradingScaleId: draftGradeScaleId,
-        name: draftName,
-        type: draftType,
-      });
-    } else {
-      await createLocation({
-        gradingScaleId: draftGradeScaleId,
-        isSelected: locations.length === 0,
-        name: draftName,
-        type: draftType,
-      });
-    }
-
-    setIsEditorVisible(false);
   }
 
   return (
@@ -149,9 +104,9 @@ export function LocationSettingsScreen() {
             <AppCard key={location.id} style={[styles.locationCard, location.isSelected && styles.selectedLocationCard]}>
               <View style={styles.locationTopRow}>
                 <View style={styles.locationCopy}>
-                  <Text style={styles.locationName}>{location.name}</Text>
-                  <Text style={styles.locationDetail}>
-                    {getTypeLabel(location.type)} - {getScaleName(location.gradingScaleId)}
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationName}>{location.name}</Text>
+                  <Text ellipsizeMode="tail" numberOfLines={1} style={styles.locationDetail}>
+                    {getLocationTypeLabel(location.type)} - {getScaleName(location.gradingScaleId)}
                   </Text>
                 </View>
                 <Text style={styles.selectedText}>{location.isSelected ? 'Selected' : ''}</Text>
@@ -180,93 +135,17 @@ export function LocationSettingsScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <DismissibleModal onDismiss={() => setIsEditorVisible(false)} visible={isEditorVisible}>
-          <AppCard style={styles.editorCard}>
-            <View style={styles.editorHeader}>
-              <Text style={styles.editorTitle}>{editingLocationId ? 'Edit location' : 'Add location'}</Text>
-              <TouchableOpacity
-                activeOpacity={0.76}
-                accessibilityLabel="Close location editor"
-                accessibilityRole="button"
-                onPress={() => setIsEditorVisible(false)}
-                style={styles.closeButton}
-              >
-                <Feather name="x" size={18} color={colors.charcoal} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.editorContent} showsVerticalScrollIndicator={false}>
-              <Text style={styles.inputLabel}>Location name</Text>
-              <TextInput
-                accessibilityLabel="Location name"
-                onChangeText={setDraftName}
-                placeholder="The Depot, Stanage, Local wall..."
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-                value={draftName}
-              />
-
-              <Text style={styles.inputLabel}>Location type</Text>
-              <View style={styles.optionGrid}>
-                {locationTypes.map((option) => {
-                  const selected = draftType === option.value;
-
-                  return (
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Set location type to ${option.label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      key={option.value}
-                      onPress={() => setDraftType(option.value)}
-                      style={[styles.optionButton, selected && styles.selectedOptionButton]}
-                    >
-                      <Text style={styles.optionButtonText}>{option.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.inputLabel}>Grade scale</Text>
-              <View style={styles.optionList}>
-                {gradeScaleOptions.map((scale) => {
-                  const selected = draftGradeScaleId === scale.id;
-
-                  return (
-                    <TouchableOpacity
-                      activeOpacity={0.76}
-                      accessibilityLabel={`Use ${scale.name} grade scale`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      key={scale.id}
-                      onPress={() => setDraftGradeScaleId(scale.id)}
-                      style={[styles.gradeScaleRow, selected && styles.selectedOptionButton]}
-                    >
-                      <Text style={styles.gradeScaleName}>{scale.name}</Text>
-                      <Text style={styles.gradeScaleState}>{selected ? 'Selected' : ''}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel="Create custom grade scale"
-                  accessibilityRole="button"
-                  onPress={openCreateCustomGradeScale}
-                  style={[styles.gradeScaleRow, styles.createOption]}
-                >
-                  <View style={styles.createOptionCopy}>
-                    <Feather name="plus" size={18} color={colors.charcoal} />
-                    <Text style={styles.gradeScaleName}>Create custom grade scale</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.editorActions}>
-                <AppButton disabled={!canSave || isLoading} onPress={() => void handleSaveLocation()} title={editingLocationId ? 'Save Location' : 'Add Location'} />
-              </View>
-            </ScrollView>
-          </AppCard>
-      </DismissibleModal>
+      <LocationEditorModal
+        defaultGradeScaleId={preferences?.selectedGradingScaleId ?? 'v_scale'}
+        editingLocation={editingLocation}
+        isSelectedOnCreate={locations.length === 0}
+        onCreateCustomGradeScale={openCreateCustomGradeScale}
+        onDismiss={() => {
+          setIsEditorVisible(false);
+          setEditingLocation(null);
+        }}
+        visible={isEditorVisible}
+      />
     </ScrollView>
   );
 }
@@ -291,16 +170,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-  closeButton: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
   content: {
     paddingBottom: 132,
     paddingHorizontal: spacing.xxl,
@@ -318,42 +187,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontFamily: fonts.extraBold,
     fontSize: 14,
-    fontWeight: '800',
-  },
-  createOption: {
-    backgroundColor: 'transparent',
-    borderColor: colors.muted,
-    borderStyle: 'dotted',
-    justifyContent: 'flex-start',
-  },
-  createOptionCopy: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  editorActions: {
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  editorCard: {
-    maxHeight: '100%',
-    padding: spacing.lg,
-    width: '100%',
-  },
-  editorContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  editorHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  editorTitle: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 20,
     fontWeight: '800',
   },
   emptyCard: {
@@ -380,61 +213,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: spacing.md,
   },
-  eyebrow: {
-    color: colors.muted,
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  gradeScaleName: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  gradeScaleRow: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-  },
-  gradeScaleState: {
-    color: colors.success,
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  input: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 15,
-    fontWeight: '700',
-    minHeight: 52,
-    paddingHorizontal: spacing.md,
-  },
-  inputLabel: {
-    color: colors.muted,
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
   locationCard: {
     gap: spacing.md,
     padding: spacing.lg,
   },
   locationCopy: {
     flex: 1,
+    minWidth: 0,
   },
   locationDetail: {
     color: colors.muted,
@@ -457,37 +242,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
-  modalOverlay: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(30,30,30,0.28)',
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xxl,
-  },
-  optionButton: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  optionButtonText: {
-    color: colors.charcoal,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  optionGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  optionList: {
-    gap: spacing.sm,
-  },
   section: {
     marginTop: spacing.xxl,
   },
@@ -501,6 +255,7 @@ const styles = StyleSheet.create({
   },
   sectionHeaderCopy: {
     flex: 1,
+    minWidth: 0,
   },
   sectionHeaderRow: {
     alignItems: 'flex-start',
@@ -508,16 +263,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sectionTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
     color: colors.charcoal,
     marginBottom: spacing.xs,
   },
   selectedLocationCard: {
     backgroundColor: 'rgba(168,221,191,0.2)',
-    borderColor: colors.mint,
-  },
-  selectedOptionButton: {
-    backgroundColor: 'rgba(168,221,191,0.28)',
     borderColor: colors.mint,
   },
   selectedText: {

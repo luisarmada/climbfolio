@@ -185,7 +185,7 @@ export function CollectionScreen() {
       >
         <View style={styles.dropdownCopy}>
           <Text style={styles.dropdownLabel}>{label}</Text>
-          <Text numberOfLines={1} style={styles.dropdownValue}>
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.dropdownValue}>
             {value}
           </Text>
         </View>
@@ -243,7 +243,7 @@ export function CollectionScreen() {
             <View style={styles.goalHeading}>
               <Text style={styles.goalsTitle}>Goal</Text>
               {selectedGoal ? (
-                <Text numberOfLines={1} style={styles.goalsValue}>
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.goalsValue}>
                   {selectedGoal.feature} {selectedGoal.grade}
                 </Text>
               ) : (
@@ -272,7 +272,7 @@ export function CollectionScreen() {
           <View style={styles.matrixHeader}>
             <View style={styles.matrixHeaderCopy}>
               <Text style={styles.matrixTitle}>Feature map</Text>
-              <Text style={styles.matrixSubtitle}>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.matrixSubtitle}>
                 {selectedScaleOption.label} | {selectedLocationName}
               </Text>
             </View>
@@ -408,7 +408,7 @@ export function CollectionScreen() {
                       }}
                       style={[styles.pickerOption, selected && styles.selectedPickerOption]}
                     >
-                      <Text style={styles.pickerOptionText}>{option.label}</Text>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.pickerOptionText}>{option.label}</Text>
                       <Text style={styles.pickerSelectedText}>{selected ? 'Selected' : ''}</Text>
                     </TouchableOpacity>
                   );
@@ -429,7 +429,7 @@ export function CollectionScreen() {
                       }}
                       style={[styles.pickerOption, selected && styles.selectedPickerOption]}
                     >
-                      <Text style={styles.pickerOptionText}>{option.name}</Text>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.pickerOptionText}>{option.name}</Text>
                       <Text style={styles.pickerSelectedText}>{selected ? 'Selected' : ''}</Text>
                     </TouchableOpacity>
                   );
@@ -503,6 +503,7 @@ const styles = StyleSheet.create({
   },
   dropdownCopy: {
     flex: 1,
+    minWidth: 0,
   },
   dropdownGrid: {
     gap: spacing.sm,
@@ -615,6 +616,7 @@ const styles = StyleSheet.create({
   },
   goalHeading: {
     flex: 1,
+    minWidth: 0,
   },
   goalIcon: {
     position: 'absolute',
@@ -633,6 +635,7 @@ const styles = StyleSheet.create({
   },
   goalOptionCopy: {
     flex: 1,
+    minWidth: 0,
   },
   goalOptionFeature: {
     color: colors.charcoal,
@@ -744,6 +747,7 @@ const styles = StyleSheet.create({
   },
   matrixHeaderCopy: {
     flex: 1,
+    minWidth: 0,
   },
   matrixRow: {
     alignItems: 'center',
@@ -800,12 +804,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     flexDirection: 'row',
+    gap: spacing.md,
     justifyContent: 'space-between',
     minHeight: 54,
     paddingHorizontal: spacing.md,
   },
   pickerOptionText: {
     color: colors.charcoal,
+    flex: 1,
     fontFamily: fonts.bold,
     fontSize: 15,
     fontWeight: '800',
@@ -815,6 +821,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 12,
     fontWeight: '700',
+    minWidth: 58,
+    textAlign: 'right',
   },
   pickerTitle: {
     color: colors.charcoal,
