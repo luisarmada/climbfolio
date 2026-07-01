@@ -2,12 +2,13 @@ import { ReactNode, createContext, PropsWithChildren, useCallback, useContext, u
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Edge, SafeAreaView } from 'react-native-safe-area-context';
-import { Href, usePathname, useRouter } from 'expo-router';
+import { Href, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActiveSessionBanner } from './ActiveSessionBanner';
 import { BottomNav } from './BottomNav';
 import { NewClimbPickerModal } from './NewClimbPickerModal';
 import { colors } from '../design/tokens';
 import { useActiveSessionStore } from '../features/sessions';
+import { createRouteHref, rememberRouteForPath, TabKey } from '../navigation/tabState';
 
 type AppShellProps = PropsWithChildren<{
   showBottomNav?: boolean;
@@ -18,6 +19,10 @@ type AppShellProps = PropsWithChildren<{
 type ProfileReturnTransitionContextValue = {
   goBackWithTransition: (fallbackHref?: Href) => void;
   returnToProfile: () => void;
+};
+
+type TabScrollToTopContextValue = {
+  registerTabScrollToTop: (key: TabKey, handler: () => void) => () => void;
 };
 
 let hasRequestedActiveSessionRestore = false;
@@ -36,6 +41,9 @@ const ProfileReturnTransitionContext = createContext<ProfileReturnTransitionCont
   goBackWithTransition: () => undefined,
   returnToProfile: () => undefined,
 });
+const TabScrollToTopContext = createContext<TabScrollToTopContextValue>({
+  registerTabScrollToTop: () => () => undefined,
+});
 
 function shouldFadeTabScreen(pathname: string) {
   return pathname === '/' || pathname === '/climb' || pathname === '/profile';
@@ -49,8 +57,15 @@ export function useAppShellTransition() {
   return useContext(ProfileReturnTransitionContext);
 }
 
+export function useTabScrollToTop(key: TabKey, handler: () => void) {
+  const { registerTabScrollToTop } = useContext(TabScrollToTopContext);
+
+  useEffect(() => registerTabScrollToTop(key, handler), [handler, key, registerTabScrollToTop]);
+}
+
 export function AppShell({ children, showBottomNav = true, transition, underlay }: AppShellProps) {
   const pathname = usePathname();
+  const searchParams = useGlobalSearchParams();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const shouldSlideContent = transition === 'slideLeft';
@@ -62,6 +77,7 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
   const transitionProgress = useRef(new Animated.Value(initialTransitionProgress)).current;
   const isLeavingSlideScreenRef = useRef(false);
   const [isBannerClimbPickerVisible, setIsBannerClimbPickerVisible] = useState(false);
+  const tabScrollHandlersRef = useRef<Partial<Record<TabKey, () => void>>>({});
   const edges: Edge[] = showBottomNav ? ['top', 'left', 'right'] : ['top', 'bottom', 'left', 'right'];
   const restoreActiveSession = useActiveSessionStore((state) => state.restoreActiveSession);
 
@@ -73,6 +89,14 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
     hasRequestedActiveSessionRestore = true;
     void restoreActiveSession();
   }, [restoreActiveSession]);
+
+  useEffect(() => {
+    if (!showBottomNav) {
+      return;
+    }
+
+    rememberRouteForPath(pathname, createRouteHref(pathname, searchParams));
+  }, [pathname, searchParams, showBottomNav]);
 
   useFocusEffect(
     useCallback(() => {
@@ -174,6 +198,20 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
     });
   }, [leaveSlideScreen, pathname, router]);
 
+  const registerTabScrollToTop = useCallback((key: TabKey, handler: () => void) => {
+    tabScrollHandlersRef.current[key] = handler;
+
+    return () => {
+      if (tabScrollHandlersRef.current[key] === handler) {
+        delete tabScrollHandlersRef.current[key];
+      }
+    };
+  }, []);
+
+  const handleActiveTabPress = useCallback((key: TabKey) => {
+    tabScrollHandlersRef.current[key]?.();
+  }, []);
+
   const translateX = transitionProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, width],
@@ -183,26 +221,28 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
     <SafeAreaView style={styles.safeArea} edges={edges}>
       <View style={styles.container}>
         <ProfileReturnTransitionContext.Provider value={{ goBackWithTransition, returnToProfile }}>
-          {underlay ? (
-            <View pointerEvents="none" style={styles.underlay}>
-              {underlay}
-            </View>
-          ) : null}
-          <Animated.View
-            style={[
-              styles.content,
-              shouldFadeContent && { opacity: transitionProgress },
-              shouldSlideContent && { transform: [{ translateX }] },
-            ]}
-          >
-            {children}
-          </Animated.View>
+          <TabScrollToTopContext.Provider value={{ registerTabScrollToTop }}>
+            {underlay ? (
+              <View pointerEvents="none" style={styles.underlay}>
+                {underlay}
+              </View>
+            ) : null}
+            <Animated.View
+              style={[
+                styles.content,
+                shouldFadeContent && { opacity: transitionProgress },
+                shouldSlideContent && { transform: [{ translateX }] },
+              ]}
+            >
+              {children}
+            </Animated.View>
+          </TabScrollToTopContext.Provider>
         </ProfileReturnTransitionContext.Provider>
         {showBottomNav ? (
           <>
             <ActiveSessionBanner onLogClimb={() => setIsBannerClimbPickerVisible(true)} />
             <NewClimbPickerModal allowQuickAdd onDismiss={() => setIsBannerClimbPickerVisible(false)} visible={isBannerClimbPickerVisible} />
-            <BottomNav onProfilePress={returnToProfile} />
+            <BottomNav onActiveTabPress={handleActiveTabPress} onProfilePress={returnToProfile} />
           </>
         ) : null}
       </View>

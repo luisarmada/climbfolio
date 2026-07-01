@@ -1,4 +1,5 @@
 import { ProfileBadgePreference, UpdateUserProfileInput, UserProfile } from '../../domain/models';
+import { localUserId } from '../../domain/userIdentity';
 import { defaultProfilePictureId } from '../../features/profile/profilePictures';
 import { nowIso } from '../../utils/dates';
 import { initializeDatabase } from '../db/client';
@@ -7,6 +8,7 @@ const localProfileId = 'local_profile';
 
 type UserProfileRow = {
   id: string;
+  user_id?: string | null;
   display_name: string;
   climber_type: string;
   badge_preference: string;
@@ -26,6 +28,7 @@ const defaultProfile = {
   displayName: 'Local Climber',
   profilePictureId: defaultProfilePictureId,
   tagline: 'Indoor boulderer',
+  userId: localUserId,
 };
 
 function mapProfile(row: UserProfileRow): UserProfile {
@@ -37,6 +40,7 @@ function mapProfile(row: UserProfileRow): UserProfile {
     displayName: row.display_name,
     profilePictureId: row.profile_picture_uri ?? defaultProfile.profilePictureId,
     tagline: row.climber_type,
+    userId: row.user_id ?? defaultProfile.userId,
     updatedAt: row.updated_at,
   };
 }
@@ -52,17 +56,19 @@ async function createDefaultProfile() {
     displayName: defaultProfile.displayName,
     profilePictureId: defaultProfile.profilePictureId,
     tagline: defaultProfile.tagline,
+    userId: defaultProfile.userId,
     updatedAt: timestamp,
   };
 
   await database.runAsync(
     `
       INSERT INTO user_profile (
-        id, display_name, climber_type, badge_preference, profile_picture_uri, created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        id, user_id, display_name, climber_type, badge_preference, profile_picture_uri, created_at, updated_at, deleted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
     `,
     [
       profile.id,
+      profile.userId,
       profile.displayName,
       profile.tagline,
       profile.badgePreference,

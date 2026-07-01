@@ -2,6 +2,7 @@ import { GradingScaleType, VGradeRange } from '../gradeScales';
 
 export type Session = {
   id: string;
+  userId: string;
   name: string | null;
   description: string | null;
   startTime: string;
@@ -21,6 +22,7 @@ export type Session = {
 };
 
 export type CreateSessionInput = {
+  userId?: string;
   name?: string | null;
   description?: string | null;
   gradingScaleGrades?: string[];

@@ -6,11 +6,15 @@ import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { profilePicturePresets, useProfileStore } from '../features/profile';
 import type { ProfilePicturePreset } from '../features/profile';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 
 export function ProfilePicturePickerScreen() {
   const { goBackWithTransition } = useProfileReturnTransition();
   const loadProfile = useProfileStore((state) => state.loadProfile);
   const updateProfile = useProfileStore((state) => state.updateProfile);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const profile = useProfileStore((state) => state.profile);
   const selectedProfilePictureId = profile?.profilePictureId;
   const generalProfilePicturePresets = profilePicturePresets.filter((preset) => preset.group === 'general');
@@ -21,8 +25,13 @@ export function ProfilePicturePickerScreen() {
   }, [loadProfile]);
 
   async function handleSelectProfilePicture(profilePictureId: string) {
-    await updateProfile({ profilePictureId });
-    goBackWithTransition('/settings/profile');
+    try {
+      await updateProfile({ profilePictureId });
+      showSuccess('Profile picture updated');
+      goBackWithTransition('/settings/profile');
+    } catch (selectError) {
+      showError('Profile picture was not updated', getErrorMessage(selectError, 'Could not update profile picture.'));
+    }
   }
 
   function renderProfilePictureButton(preset: ProfilePicturePreset) {

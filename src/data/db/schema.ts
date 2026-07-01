@@ -1,4 +1,4 @@
-export const schemaVersion = 13;
+export const schemaVersion = 14;
 
 export const createSchemaSql = `
 PRAGMA foreign_keys = ON;
@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL DEFAULT 'user_local',
   name TEXT,
   description TEXT,
   start_time TEXT NOT NULL,
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS attempts (
 
 CREATE TABLE IF NOT EXISTS user_profile (
   id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL DEFAULT 'user_local',
   display_name TEXT NOT NULL,
   climber_type TEXT NOT NULL,
   badge_preference TEXT NOT NULL,
@@ -102,6 +104,9 @@ CREATE TABLE IF NOT EXISTS climbing_locations (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_active
   ON sessions(end_time, deleted_at);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_completed
+  ON sessions(user_id, end_time, deleted_at);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active
   ON sessions(COALESCE(end_time, '__active__'))

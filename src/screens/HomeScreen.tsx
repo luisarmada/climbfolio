@@ -1,13 +1,26 @@
-import { useEffect, useState } from 'react';
-import { Feather } from '@expo/vector-icons';
+import { useCallback, useRef, useState } from 'react';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { AppButton } from '../components/AppButton';
+import { useTabScrollToTop } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { SectionHeader } from '../components/SectionHeader';
+import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { AggregateStats, sessionSummaryService } from '../features/summaries';
+import { useProfileStore } from '../features/profile';
+import { followingService } from '../features/social';
+import {
+  AggregateStats,
+  calculateWeeklyStreak,
+  SessionSummary,
+  sessionSummaryService,
+  summarizeAggregate,
+} from '../features/summaries';
+import { useRememberedScrollView } from '../hooks/useRememberedScrollView';
+import { smoothScrollViewToTop } from '../utils/scrolling';
 
 const emptyStats: AggregateStats = {
   averageAttemptsPerClimb: 0,
@@ -25,25 +38,70 @@ const emptyStats: AggregateStats = {
   totalClimbs: 0,
 };
 
-export function HomeScreen() {
-  const router = useRouter();
-  const [lifetimeStats, setLifetimeStats] = useState<AggregateStats>(emptyStats);
-  const [isStatsLoading, setIsStatsLoading] = useState(true);
-  const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
-  const [weeklyStreak, setWeeklyStreak] = useState(0);
+type CachedHomeData = {
+  friendActivitySummaries: SessionSummary[];
+  lifetimeStats: AggregateStats;
+  weeklyStreak: number;
+};
 
-  useEffect(() => {
+let cachedHomeData: CachedHomeData | null = null;
+
+type HomeScreenProps = {
+  initialScrollOffset?: number;
+};
+
+export function HomeScreen({ initialScrollOffset = 0 }: HomeScreenProps = {}) {
+  const router = useRouter();
+  const loadProfile = useProfileStore((state) => state.loadProfile);
+  const profile = useProfileStore((state) => state.profile);
+  const displayName = profile?.displayName ?? 'Local Climber';
+  const [lifetimeStats, setLifetimeStats] = useState<AggregateStats>(cachedHomeData?.lifetimeStats ?? emptyStats);
+  const [friendActivitySummaries, setFriendActivitySummaries] = useState<SessionSummary[]>(cachedHomeData?.friendActivitySummaries ?? []);
+  const [isStatsLoading, setIsStatsLoading] = useState(cachedHomeData === null);
+  const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
+  const [weeklyStreak, setWeeklyStreak] = useState(cachedHomeData?.weeklyStreak ?? 0);
+  const friendActivityPagination = useSessionActivityPagination(friendActivitySummaries.length, 'home-recent-activity');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const rememberedScroll = useRememberedScrollView('/', scrollViewRef, { initialOffset: initialScrollOffset });
+  const scrollToTop = useCallback(() => {
+    smoothScrollViewToTop(scrollViewRef.current);
+  }, []);
+  const openSearch = useCallback(() => {
+    const homeScrollOffset = rememberedScroll.rememberCurrentScrollOffset();
+    if (homeScrollOffset) {
+      router.push({ pathname: '/search', params: { homeScrollOffset: String(Math.round(homeScrollOffset)) } });
+      return;
+    }
+
+    router.push('/search');
+  }, [rememberedScroll, router]);
+
+  useTabScrollToTop('home', scrollToTop);
+
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadHomeStats() {
-      const [nextStats, nextWeeklyStreak] = await Promise.all([
-        sessionSummaryService.getAggregateStats(),
-        sessionSummaryService.getWeeklyStreak(),
+      const nextProfile = await loadProfile();
+      const ownUserIds = [nextProfile.userId];
+      const followingUserIds = followingService.listFollowingUserIds(nextProfile.userId);
+      const [ownSummaries, nextFriendActivitySummaries] = await Promise.all([
+        sessionSummaryService.listCompletedSessionSummaries({ userIds: ownUserIds }),
+        sessionSummaryService.listCompletedSessionSummaries({ userIds: followingUserIds }),
       ]);
 
       if (isMounted) {
-        setLifetimeStats(nextStats);
+        const nextLifetimeStats = summarizeAggregate(ownSummaries);
+        const nextWeeklyStreak = calculateWeeklyStreak(ownSummaries);
+
+        cachedHomeData = {
+          friendActivitySummaries: nextFriendActivitySummaries,
+          lifetimeStats: nextLifetimeStats,
+          weeklyStreak: nextWeeklyStreak,
+        };
+        setLifetimeStats(nextLifetimeStats);
         setWeeklyStreak(nextWeeklyStreak);
+        setFriendActivitySummaries(nextFriendActivitySummaries);
         setIsStatsLoading(false);
       }
     }
@@ -53,10 +111,22 @@ export function HomeScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadProfile]));
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      nativeID={rememberedScroll.nativeID}
+      ref={scrollViewRef}
+      contentContainerStyle={styles.content}
+      contentOffset={rememberedScroll.initialContentOffset}
+      onContentSizeChange={rememberedScroll.handleContentSizeChange}
+      onScroll={(event) => {
+        rememberedScroll.handleScroll(event);
+        friendActivityPagination.handleScroll(event);
+      }}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topRow}>
         <Text style={styles.title}>Home</Text>
         <View style={styles.headerActions}>
@@ -64,7 +134,7 @@ export function HomeScreen() {
             activeOpacity={0.7}
             accessibilityLabel="Open search"
             accessibilityRole="button"
-            onPress={() => router.push('/search')}
+            onPress={openSearch}
             style={styles.iconButton}
           >
             <Feather name="search" size={23} color={colors.charcoal} />
@@ -82,7 +152,7 @@ export function HomeScreen() {
       </View>
 
       <View style={styles.streakFlair}>
-        <Feather name="zap" size={15} color={colors.charcoal} />
+        <Ionicons name="flame" size={15} color={colors.charcoal} />
         <Text style={styles.streakText}>{isStatsLoading ? '...' : `${weeklyStreak} week streak`}</Text>
       </View>
 
@@ -117,16 +187,40 @@ export function HomeScreen() {
         </View>
       </AppCard>
 
-      <SectionHeader title="Friend Activity" />
-      <AppCard style={styles.comingSoonCard}>
-        <View style={styles.comingSoonIcon}>
-          <Feather name="users" size={20} color={colors.charcoal} />
-        </View>
-        <Text style={styles.comingSoonTitle}>Coming soon</Text>
-        <Text style={styles.comingSoonCopy}>
-          Friend activity is taking a rest for now. Your home feed will stay focused on your local climbing progress.
-        </Text>
-      </AppCard>
+      <SectionHeader title="Recent Activity" />
+      {isStatsLoading ? (
+        <AppCard style={styles.comingSoonCard}>
+          <Text style={styles.comingSoonTitle}>Loading activity...</Text>
+        </AppCard>
+      ) : friendActivitySummaries.length === 0 ? (
+        <AppCard style={styles.comingSoonCard}>
+          <View style={styles.comingSoonIcon}>
+            <Feather name="users" size={20} color={colors.charcoal} />
+          </View>
+          <Text style={styles.comingSoonTitle}>No activity yet</Text>
+          <Text style={styles.comingSoonCopy}>
+            Sessions from you and followed climbers will appear here after they are saved.
+          </Text>
+        </AppCard>
+      ) : (
+        <SessionActivityList
+          displayName={displayName}
+          onPress={(summary) => {
+            const homeScrollOffset = rememberedScroll.rememberCurrentScrollOffset();
+            router.push({
+              pathname: '/session/[sessionId]',
+              params: {
+                homeScrollOffset: homeScrollOffset ? String(Math.round(homeScrollOffset)) : '',
+                returnTo: 'home',
+                sessionId: summary.session.id,
+              },
+            });
+          }}
+          profilePictureId={profile?.profilePictureId}
+          summaries={friendActivitySummaries}
+          visibleCount={friendActivityPagination.visibleCount}
+        />
+      )}
 
       <DismissibleModal onDismiss={() => setIsNotificationsVisible(false)} visible={isNotificationsVisible}>
         <AppCard style={styles.notificationCard}>
@@ -135,7 +229,7 @@ export function HomeScreen() {
           </View>
           <Text style={styles.notificationTitle}>Notifications coming soon</Text>
           <Text style={styles.notificationCopy}>
-            This will become the place for session nudges, friend activity, and useful climbing updates.
+            This will become the place for session nudges, recent activity, and useful climbing updates.
           </Text>
           <AppButton icon="check" onPress={() => setIsNotificationsVisible(false)} title="Got it" />
         </AppCard>

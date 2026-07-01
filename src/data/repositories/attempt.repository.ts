@@ -18,9 +18,14 @@ export type AttemptRepository = {
   getById(attemptId: string): Promise<Attempt | null>;
   getLastByClimbId(climbId: string): Promise<Attempt | null>;
   listByClimbId(climbId: string): Promise<Attempt[]>;
+  listByClimbIds(climbIds: string[]): Promise<Attempt[]>;
   update(attemptId: string, input: UpdateAttemptInput): Promise<Attempt | null>;
   softDeleteLatestByClimbId(climbId: string, deletedAt?: string): Promise<Attempt | null>;
 };
+
+function placeholders(values: unknown[]) {
+  return values.map(() => '?').join(', ');
+}
 
 function mapAttempt(row: AttemptRow): Attempt {
   return {
@@ -102,6 +107,24 @@ export const attemptRepository: AttemptRepository = {
         ORDER BY attempt_number ASC;
       `,
       [climbId],
+    );
+
+    return rows.map(mapAttempt);
+  },
+
+  async listByClimbIds(climbIds) {
+    if (climbIds.length === 0) {
+      return [];
+    }
+
+    const database = await initializeDatabase();
+    const rows = await database.getAllAsync<AttemptRow>(
+      `
+        SELECT * FROM attempts
+        WHERE climb_id IN (${placeholders(climbIds)}) AND deleted_at IS NULL
+        ORDER BY climb_id ASC, attempt_number ASC;
+      `,
+      climbIds,
     );
 
     return rows.map(mapAttempt);

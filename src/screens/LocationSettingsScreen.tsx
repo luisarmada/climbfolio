@@ -11,6 +11,8 @@ import { ClimbingLocation } from '../domain/models';
 import { builtInGradingScales } from '../domain/gradeScales';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 
 export function LocationSettingsScreen() {
   const router = useRouter();
@@ -20,6 +22,8 @@ export function LocationSettingsScreen() {
   const locations = useLocationStore((state) => state.locations);
   const removeLocation = useLocationStore((state) => state.removeLocation);
   const selectLocation = useLocationStore((state) => state.selectLocation);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
   const [editingLocation, setEditingLocation] = useState<ClimbingLocation | null>(null);
@@ -56,6 +60,24 @@ export function LocationSettingsScreen() {
     setIsEditorVisible(false);
     setEditingLocation(null);
     router.push('/settings/climbing');
+  }
+
+  async function handleSelectLocation(location: ClimbingLocation) {
+    try {
+      await selectLocation(location.id);
+      showSuccess('Default location updated');
+    } catch (selectError) {
+      showError('Location was not selected', getErrorMessage(selectError, 'Could not select this location.'));
+    }
+  }
+
+  async function handleRemoveLocation(location: ClimbingLocation) {
+    try {
+      await removeLocation(location.id);
+      showSuccess('Location removed');
+    } catch (removeError) {
+      showError('Location was not removed', getErrorMessage(removeError, 'Could not remove this location.'));
+    }
   }
 
   return (
@@ -114,13 +136,13 @@ export function LocationSettingsScreen() {
               <View style={styles.actions}>
                 <AppButton
                   disabled={location.isSelected}
-                  onPress={() => void selectLocation(location.id)}
+                  onPress={() => void handleSelectLocation(location)}
                   style={styles.actionButton}
                   title={location.isSelected ? 'Selected' : 'Use'}
                   variant="secondary"
                 />
                 <AppButton onPress={() => openEditEditor(location)} style={styles.actionButton} title="Edit" variant="secondary" />
-                <AppButton onPress={() => void removeLocation(location.id)} style={styles.actionButton} title="Remove" variant="destructive" />
+                <AppButton onPress={() => void handleRemoveLocation(location)} style={styles.actionButton} title="Remove" variant="destructive" />
               </View>
             </AppCard>
           ))}

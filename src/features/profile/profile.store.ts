@@ -10,6 +10,24 @@ type ProfileStore = {
   updateProfile(input: UpdateUserProfileInput): Promise<UserProfile>;
 };
 
+function isSameProfile(left: UserProfile | null, right: UserProfile) {
+  if (!left) {
+    return false;
+  }
+
+  return (
+    left.id === right.id &&
+    left.userId === right.userId &&
+    left.displayName === right.displayName &&
+    left.tagline === right.tagline &&
+    left.badgePreference === right.badgePreference &&
+    left.profilePictureId === right.profilePictureId &&
+    left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt &&
+    left.deletedAt === right.deletedAt
+  );
+}
+
 export const useProfileStore = create<ProfileStore>((set) => ({
   error: null,
   isLoading: false,
@@ -20,7 +38,10 @@ export const useProfileStore = create<ProfileStore>((set) => ({
 
     try {
       const profile = await profileService.getLocalProfile();
-      set({ isLoading: false, profile });
+      set((state) => ({
+        isLoading: false,
+        profile: isSameProfile(state.profile, profile) ? state.profile : profile,
+      }));
       return profile;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Could not load profile.', isLoading: false });
@@ -33,7 +54,10 @@ export const useProfileStore = create<ProfileStore>((set) => ({
 
     try {
       const profile = await profileService.updateLocalProfile(input);
-      set({ isLoading: false, profile });
+      set((state) => ({
+        isLoading: false,
+        profile: isSameProfile(state.profile, profile) ? state.profile : profile,
+      }));
       return profile;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Could not update profile.', isLoading: false });

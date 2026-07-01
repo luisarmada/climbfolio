@@ -8,7 +8,7 @@ import {
 } from '../../domain/gradeScales';
 import { ClimbingPreferences } from '../../domain/models';
 import { featureSections, getClimbScaleSnapshot, getKnownFeatures, getSessionScaleSnapshot } from '../climbs';
-import { SessionSummary } from '../summaries';
+import type { SessionSummary } from '../summaries';
 
 export const allLocationsFilterId = 'all_locations';
 
@@ -130,6 +130,17 @@ export function buildCollectionScaleOptions(preferences: ClimbingPreferences | n
 
 export function getPreferredCollectionScaleKey(preferences: ClimbingPreferences | null) {
   const selected = preferences?.selectedGradingScaleId ?? 'v_scale';
+
+  if (selected === 'v_scale' || selected === 'font') {
+    return selected;
+  }
+
+  const customScale = preferences?.customScales.find((scale) => scale.id === selected);
+  return customScale ? getCustomScaleKey(customScale) : 'v_scale';
+}
+
+export function getCollectionScaleKeyForGradingScaleId(preferences: ClimbingPreferences | null, gradingScaleId: string | null | undefined) {
+  const selected = gradingScaleId ?? 'v_scale';
 
   if (selected === 'v_scale' || selected === 'font') {
     return selected;

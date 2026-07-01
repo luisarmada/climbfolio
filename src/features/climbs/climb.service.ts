@@ -4,6 +4,7 @@ import { attemptRepository, climbRepository } from '../../data/repositories';
 import { Attempt, Climb } from '../../domain/models';
 import { nowIso } from '../../utils/dates';
 import { secondsBetween } from '../../utils/time';
+import { invalidateSessionSummaryCache } from '../summaries/session-summary.cache';
 import { warmUpHoldType } from './climb.options';
 import { StartClimbInput } from './climb.types';
 
@@ -89,7 +90,7 @@ async function reconcileAttemptRows(climb: Climb, targetAttemptCount: number, ed
 export const climbService = {
   async startClimb(input: StartClimbInput): Promise<Climb> {
     try {
-      return await withDatabaseTransaction(async () => {
+      const startedClimb = await withDatabaseTransaction(async () => {
         const existingActiveClimb = await climbRepository.getActiveBySessionId(input.sessionId);
 
         if (existingActiveClimb) {
@@ -126,6 +127,9 @@ export const climbService = {
 
         return updatedClimb;
       });
+
+      invalidateSessionSummaryCache();
+      return startedClimb;
     } catch (error) {
       if (isDatabaseConstraintError(error)) {
         const existingActiveClimb = await climbRepository.getActiveBySessionId(input.sessionId);
@@ -140,7 +144,7 @@ export const climbService = {
   },
 
   async addAttempt(climbId: string): Promise<Climb> {
-    return withDatabaseTransaction(async () => {
+    const updatedClimb = await withDatabaseTransaction(async () => {
       const climb = await requireActiveClimb(climbId);
       const latestAttempt = await attemptRepository.getLastByClimbId(climb.id);
       const attemptNumber = (latestAttempt?.attemptNumber ?? 0) + 1;
@@ -161,10 +165,13 @@ export const climbService = {
 
       return updatedClimb;
     });
+
+    invalidateSessionSummaryCache();
+    return updatedClimb;
   },
 
   async undoAttempt(climbId: string): Promise<Climb> {
-    return withDatabaseTransaction(async () => {
+    const updatedClimb = await withDatabaseTransaction(async () => {
       const climb = await requireActiveClimb(climbId);
       const attempts = await attemptRepository.listByClimbId(climb.id);
 
@@ -182,6 +189,9 @@ export const climbService = {
 
       return updatedClimb;
     });
+
+    invalidateSessionSummaryCache();
+    return updatedClimb;
   },
 
   async setCompleted(climbId: string, completed: boolean): Promise<Climb> {
@@ -192,6 +202,7 @@ export const climbService = {
       throw new Error('Could not update climb.');
     }
 
+    invalidateSessionSummaryCache();
     return updatedClimb;
   },
 
@@ -212,6 +223,7 @@ export const climbService = {
       throw new Error('Could not update climb.');
     }
 
+    invalidateSessionSummaryCache();
     return updatedClimb;
   },
 
@@ -223,7 +235,7 @@ export const climbService = {
       durationSeconds?: number | null;
     },
   ): Promise<Climb> {
-    return withDatabaseTransaction(async () => {
+    const updatedClimb = await withDatabaseTransaction(async () => {
       const climb = await climbRepository.getById(climbId);
 
       if (!climb) {
@@ -257,10 +269,14 @@ export const climbService = {
 
       return updatedClimb;
     });
+
+    invalidateSessionSummaryCache();
+    return updatedClimb;
   },
 
   async reorderSessionClimbs(sessionId: string, climbIds: string[]) {
     await climbRepository.reorderSessionClimbs(sessionId, climbIds);
+    invalidateSessionSummaryCache();
   },
 
   async finishClimb(climbId: string, completed?: boolean): Promise<Climb> {
@@ -271,6 +287,7 @@ export const climbService = {
       throw new Error('Could not finish climb.');
     }
 
+    invalidateSessionSummaryCache();
     return updatedClimb;
   },
 
@@ -282,6 +299,7 @@ export const climbService = {
       throw new Error('Could not discard climb.');
     }
 
+    invalidateSessionSummaryCache();
     return discardedClimb;
   },
 
@@ -298,11 +316,12 @@ export const climbService = {
       throw new Error('Could not remove climb.');
     }
 
+    invalidateSessionSummaryCache();
     return deletedClimb;
   },
 
   async logWarmUpClimb(input: Pick<StartClimbInput, 'grade' | 'gradingScaleGrades' | 'gradingScaleIsTape' | 'gradingScaleName' | 'gradingScaleType' | 'gradingScaleVGradeRanges' | 'sessionId'>): Promise<Climb> {
-    return withDatabaseTransaction(async () => {
+    const warmUpClimb = await withDatabaseTransaction(async () => {
       const timestamp = nowIso();
       const lastFinishedClimb = await climbRepository.getLastFinishedBySessionId(input.sessionId);
       const climb = await climbRepository.create({
@@ -341,5 +360,8 @@ export const climbService = {
 
       return finishedClimb;
     });
+
+    invalidateSessionSummaryCache();
+    return warmUpClimb;
   },
 };

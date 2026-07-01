@@ -4,11 +4,14 @@ import { CalendarDaySessionsScreen } from '../../src/screens/CalendarDaySessions
 import { CalendarScreen } from '../../src/screens/CalendarScreen';
 import { CollectionCellSessionsScreen } from '../../src/screens/CollectionCellSessionsScreen';
 import { CollectionScreen } from '../../src/screens/CollectionScreen';
+import { HomeScreen } from '../../src/screens/HomeScreen';
 import { ProfileScreen } from '../../src/screens/ProfileScreen';
 import { SessionDetailScreen } from '../../src/screens/SessionDetailScreen';
 
-function getSessionDetailUnderlay(returnTo: string | string[] | undefined) {
+function getSessionDetailUnderlay(returnTo: string | string[] | undefined, homeScrollOffset: string | string[] | undefined) {
   const returnTarget = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+  const rawHomeScrollOffset = Array.isArray(homeScrollOffset) ? homeScrollOffset[0] : homeScrollOffset;
+  const initialHomeScrollOffset = Number(rawHomeScrollOffset ?? 0);
 
   if (returnTarget === 'calendarDay') {
     return <CalendarDaySessionsScreen />;
@@ -26,14 +29,18 @@ function getSessionDetailUnderlay(returnTo: string | string[] | undefined) {
     return <CollectionScreen />;
   }
 
+  if (returnTarget === 'home') {
+    return <HomeScreen initialScrollOffset={Number.isFinite(initialHomeScrollOffset) ? initialHomeScrollOffset : 0} />;
+  }
+
   return <ProfileScreen />;
 }
 
 export default function SessionDetailRoute() {
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const { homeScrollOffset, returnTo } = useLocalSearchParams<{ homeScrollOffset?: string; returnTo?: string }>();
 
   return (
-    <AppShell transition="slideLeft" underlay={getSessionDetailUnderlay(returnTo)}>
+    <AppShell transition="slideLeft" underlay={getSessionDetailUnderlay(returnTo, homeScrollOffset)}>
       <SessionDetailScreen />
     </AppShell>
   );

@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
@@ -20,11 +21,13 @@ import {
   countTriedGapCells,
   filterCollectionSummaries,
   getCellState,
+  getCollectionScaleKeyForGradingScaleId,
   getPreferredCollectionScaleKey,
   isBestSentCell,
 } from '../features/collections';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
+import { useProfileStore } from '../features/profile';
 import { SessionSummary, sessionSummaryService } from '../features/summaries';
 
 const fallbackScaleOption = {
@@ -87,6 +90,7 @@ export function CollectionScreen() {
   const { returnToProfile } = useProfileReturnTransition();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
+  const loadProfile = useProfileStore((state) => state.loadProfile);
   const loadLocations = useLocationStore((state) => state.loadLocations);
   const locations = useLocationStore((state) => state.locations);
   const [filterPicker, setFilterPicker] = useState<'location' | 'scale' | null>(null);
@@ -97,13 +101,19 @@ export function CollectionScreen() {
   const [selectedLocationId, setSelectedLocationId] = useState(allLocationsFilterId);
   const [selectedScaleKey, setSelectedScaleKey] = useState<string | null>(null);
   const scaleOptions = useMemo(() => buildCollectionScaleOptions(preferences, summaries), [preferences, summaries]);
-  const resolvedScaleKey = selectedScaleKey ?? getPreferredCollectionScaleKey(preferences);
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId) ?? null;
+  const canChooseGradeScale = selectedLocationId === allLocationsFilterId;
+  const allLocationsScaleKey = selectedScaleKey ?? getPreferredCollectionScaleKey(preferences);
+  const locationScaleKey = selectedLocation
+    ? getCollectionScaleKeyForGradingScaleId(preferences, selectedLocation.gradingScaleId)
+    : null;
+  const resolvedScaleKey = canChooseGradeScale ? allLocationsScaleKey : locationScaleKey ?? allLocationsScaleKey;
   const selectedScaleOption = scaleOptions.find((option) => option.key === resolvedScaleKey) ?? scaleOptions[0] ?? fallbackScaleOption;
   const locationOptions = useMemo(
     () => [{ id: allLocationsFilterId, name: 'All locations' }, ...locations.map((location) => ({ id: location.id, name: location.name }))],
     [locations],
   );
-  const selectedLocationName = locationOptions.find((option) => option.id === selectedLocationId)?.name ?? 'All locations';
+  const selectedLocationName = selectedLocation?.name ?? locationOptions.find((option) => option.id === selectedLocationId)?.name ?? 'All locations';
   const filteredSummaries = useMemo(
     () => filterCollectionSummaries(summaries, selectedScaleOption.key, selectedLocationId),
     [selectedLocationId, selectedScaleOption.key, summaries],
@@ -118,15 +128,14 @@ export function CollectionScreen() {
   const coveredFeatures = countFeaturesCovered(rows);
   const triedCells = countTriedGapCells(rows);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadCollection() {
-      const [nextSummaries] = await Promise.all([
-        sessionSummaryService.listCompletedSessionSummaries(),
-        loadPreferences(),
-        loadLocations(),
-      ]);
+      const [nextProfile] = await Promise.all([loadProfile(), loadPreferences(), loadLocations()]);
+      const nextSummaries = await sessionSummaryService.listCompletedSessionSummaries({
+        userIds: [nextProfile.userId],
+      });
 
       if (isMounted) {
         setSummaries(nextSummaries);
@@ -139,11 +148,17 @@ export function CollectionScreen() {
     return () => {
       isMounted = false;
     };
-  }, [loadLocations, loadPreferences]);
+  }, [loadLocations, loadPreferences, loadProfile]));
 
   useEffect(() => {
     setSelectedGoal(null);
   }, [selectedLocationId, selectedScaleOption.key]);
+
+  useEffect(() => {
+    if (!canChooseGradeScale && filterPicker === 'scale') {
+      setFilterPicker(null);
+    }
+  }, [canChooseGradeScale, filterPicker]);
 
   function chooseGoal(goal: CollectionGoalTarget) {
     setSelectedGoal(goal);
@@ -174,14 +189,22 @@ export function CollectionScreen() {
     });
   }
 
-  function renderDropdownRow(label: string, value: string, onPress: () => void) {
+  function renderDropdownRow(
+    label: string,
+    value: string,
+    onPress: () => void,
+    options: { accessibilityLabel?: string; disabled?: boolean; statusText?: string } = {},
+  ) {
+    const disabled = Boolean(options.disabled);
+
     return (
       <TouchableOpacity
         activeOpacity={0.76}
-        accessibilityLabel={`Change ${label}`}
+        accessibilityLabel={options.accessibilityLabel ?? `Change ${label}`}
         accessibilityRole="button"
-        onPress={onPress}
-        style={styles.dropdownRow}
+        disabled={disabled}
+        onPress={disabled ? undefined : onPress}
+        style={[styles.dropdownRow, disabled && styles.disabledDropdownRow]}
       >
         <View style={styles.dropdownCopy}>
           <Text style={styles.dropdownLabel}>{label}</Text>
@@ -189,7 +212,8 @@ export function CollectionScreen() {
             {value}
           </Text>
         </View>
-        <Feather name="chevron-down" size={18} color={colors.charcoal} />
+        {options.statusText ? <Text style={styles.dropdownStatusText}>{options.statusText}</Text> : null}
+        {disabled ? null : <Feather name="chevron-down" size={18} color={colors.charcoal} />}
       </TouchableOpacity>
     );
   }
@@ -215,11 +239,15 @@ export function CollectionScreen() {
         <AppCard style={styles.filterCard}>
           <View style={styles.filterTitleRow}>
             <Text style={styles.filterTitle}>Map view</Text>
-            <Text style={styles.filterNote}>Separate map per scale</Text>
+            <Text style={styles.filterNote}>{canChooseGradeScale ? 'Choose scale for all places' : 'Using location scale'}</Text>
           </View>
           <View style={styles.dropdownGrid}>
-            {renderDropdownRow('Grade scale', selectedScaleOption.label, () => setFilterPicker('scale'))}
             {renderDropdownRow('Location', selectedLocationName, () => setFilterPicker('location'))}
+            {renderDropdownRow('Grade scale', selectedScaleOption.label, () => setFilterPicker('scale'), {
+              accessibilityLabel: canChooseGradeScale ? 'Change Grade scale' : 'Grade scale set by selected location',
+              disabled: !canChooseGradeScale,
+              statusText: canChooseGradeScale ? undefined : 'From location',
+            })}
           </View>
         </AppCard>
 
@@ -526,12 +554,21 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: spacing.md,
   },
+  dropdownStatusText: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   dropdownValue: {
     color: colors.charcoal,
     fontFamily: fonts.extraBold,
     fontSize: 15,
     fontWeight: '800',
     marginTop: 2,
+  },
+  disabledDropdownRow: {
+    backgroundColor: 'rgba(250,247,241,0.72)',
   },
   emptyGoalText: {
     color: colors.muted,

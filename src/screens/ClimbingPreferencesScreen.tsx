@@ -19,6 +19,8 @@ import {
 } from '../domain/gradeScales';
 import { climbColours } from '../features/climbs';
 import { useClimbingPreferencesStore } from '../features/preferences';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 
 function createCustomScaleId() {
@@ -49,6 +51,8 @@ export function ClimbingPreferencesScreen() {
   const { goBackWithTransition } = useProfileReturnTransition();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const updatePreferences = useClimbingPreferencesStore((state) => state.updatePreferences);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
   const isLoading = useClimbingPreferencesStore((state) => state.isLoading);
   const error = useClimbingPreferencesStore((state) => state.error);
@@ -199,6 +203,7 @@ export function ClimbingPreferencesScreen() {
       return;
     }
 
+    const isEditing = Boolean(editingScaleId);
     const nextScale = {
       grades: normalizedDraftGrades,
       id: editingScaleId ?? createCustomScaleId(),
@@ -219,6 +224,7 @@ export function ClimbingPreferencesScreen() {
     setSelectedGradingScaleId(nextScale.id);
     setSavedMessage(null);
     setIsEditorVisible(false);
+    showSuccess(isEditing ? 'Grade scale updated' : 'Grade scale added');
   }
 
   function removeCustomScale(scaleId: string) {
@@ -230,14 +236,20 @@ export function ClimbingPreferencesScreen() {
     }
 
     setSavedMessage(null);
+    showSuccess('Grade scale removed');
   }
 
   async function handleSave() {
-    await updatePreferences({
-      customScales,
-      selectedGradingScaleId,
-    });
-    setSavedMessage('Saved locally');
+    try {
+      await updatePreferences({
+        customScales,
+        selectedGradingScaleId,
+      });
+      setSavedMessage('Saved locally');
+      showSuccess('Preferences saved');
+    } catch (saveError) {
+      showError('Preferences were not saved', getErrorMessage(saveError, 'Could not save climbing preferences.'));
+    }
   }
 
   return (
@@ -372,7 +384,7 @@ export function ClimbingPreferencesScreen() {
       {savedMessage ? <Text style={styles.savedText}>{savedMessage}</Text> : null}
 
       <View style={styles.saveAction}>
-        <AppButton disabled={isLoading} onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Preferences'} />
+        <AppButton disabled={isLoading} onPress={() => void handleSave()} title={isLoading ? 'Saving...' : 'Save Preferences'} />
       </View>
 
       <DismissibleModal onDismiss={() => setIsEditorVisible(false)} visible={isEditorVisible}>

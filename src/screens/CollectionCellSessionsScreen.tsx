@@ -1,10 +1,11 @@
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
+import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { builtInGradingScales } from '../domain/gradeScales';
 import {
@@ -15,14 +16,8 @@ import {
 } from '../features/collections';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
-import {
-  SessionSummary,
-  formatDuration,
-  formatSessionDate,
-  formatSessionTime,
-  sessionSummaryService,
-} from '../features/summaries';
-import { getSessionDisplayName } from '../features/sessions';
+import { useProfileStore } from '../features/profile';
+import { SessionSummary, sessionSummaryService } from '../features/summaries';
 
 const fallbackScaleOption = {
   key: 'v_scale',
@@ -34,24 +29,14 @@ function getStringParam(value: string | string[] | undefined, fallback = '') {
   return Array.isArray(value) ? value[0] ?? fallback : value ?? fallback;
 }
 
-function formatSessionHistorySubtitle(summary: SessionSummary) {
-  const date = formatSessionDate(summary.session.startTime);
-  const time = formatSessionTime(summary.session.startTime);
-  const dateTime = `${date}, ${time}`;
-
-  if (summary.session.locationName) {
-    return `${dateTime} @ ${summary.session.locationName}`;
-  }
-
-  return dateTime;
-}
-
 export function CollectionCellSessionsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
   const { goBackWithTransition } = useProfileReturnTransition();
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
+  const loadProfile = useProfileStore((state) => state.loadProfile);
+  const profile = useProfileStore((state) => state.profile);
   const loadLocations = useLocationStore((state) => state.loadLocations);
   const locations = useLocationStore((state) => state.locations);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
@@ -71,16 +56,25 @@ export function CollectionCellSessionsScreen() {
     () => findCollectionCellSessionMatches(filteredSummaries, selectedScaleOption.scale, feature, grade),
     [feature, filteredSummaries, grade, selectedScaleOption.scale],
   );
+  const matchedSummaries = useMemo(() => matches.map((match) => match.summary), [matches]);
+  const displayName = profile?.displayName ?? 'Local Climber';
+  const sessionPagination = useSessionActivityPagination(matchedSummaries.length);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadCellSessions() {
-      const [nextSummaries] = await Promise.all([
-        sessionSummaryService.listCompletedSessionSummaries(),
-        loadPreferences(),
-        loadLocations(),
-      ]);
+      const [nextProfile, nextPreferences] = await Promise.all([loadProfile(), loadPreferences(), loadLocations()]);
+      const nextScaleOptions = buildCollectionScaleOptions(nextPreferences, []);
+      const nextSelectedScaleOption =
+        nextScaleOptions.find((option) => option.key === scaleKey) ?? nextScaleOptions[0] ?? fallbackScaleOption;
+      const nextSummaries = await sessionSummaryService.listCompletedSessionSummariesForCollectionCell({
+        feature,
+        grade,
+        locationId: locationId === allLocationsFilterId ? undefined : locationId,
+        scale: nextSelectedScaleOption.scale,
+        userIds: [nextProfile.userId],
+      });
 
       if (isMounted) {
         setSummaries(nextSummaries);
@@ -93,10 +87,15 @@ export function CollectionCellSessionsScreen() {
     return () => {
       isMounted = false;
     };
-  }, [loadLocations, loadPreferences]);
+  }, [feature, grade, loadLocations, loadPreferences, loadProfile, locationId, scaleKey]));
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      onScroll={sessionPagination.handleScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topRow}>
         <TouchableOpacity
           activeOpacity={0.72}
@@ -156,33 +155,25 @@ export function CollectionCellSessionsScreen() {
         </AppCard>
       ) : null}
 
-      <View style={styles.sessionList}>
-        {matches.map((match) => (
-          <ActivityHighlightCard
-            key={match.summary.session.id}
-            onPress={() =>
-              router.push({
-                pathname: '/session/[sessionId]',
-                params: {
-                  feature,
-                  grade,
-                  locationId,
-                  returnTo: 'collectionCell',
-                  scaleKey,
-                  sessionId: match.summary.session.id,
-                },
-              })
-            }
-            stats={[
-              { label: 'Time', value: formatDuration(match.summary.session.durationSeconds) },
-              { label: 'Climbs', value: String(match.summary.totalClimbs) },
-              { label: 'Best', value: match.summary.highestGradeCompleted ?? 'None' },
-            ]}
-            subtitle={formatSessionHistorySubtitle(match.summary)}
-            title={getSessionDisplayName(match.summary.session)}
-          />
-        ))}
-      </View>
+      <SessionActivityList
+        displayName={displayName}
+        onPress={(summary) =>
+          router.push({
+            pathname: '/session/[sessionId]',
+            params: {
+              feature,
+              grade,
+              locationId,
+              returnTo: 'collectionCell',
+              scaleKey,
+              sessionId: summary.session.id,
+            },
+          })
+        }
+        profilePictureId={profile?.profilePictureId}
+        summaries={matchedSummaries}
+        visibleCount={sessionPagination.visibleCount}
+      />
     </ScrollView>
   );
 }
@@ -266,9 +257,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
-  },
-  sessionList: {
-    gap: spacing.md,
   },
   stat: {
     flex: 1,

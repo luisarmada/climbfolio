@@ -34,6 +34,18 @@ function stringifyColours(colours: string[]) {
   return colours.join(', ');
 }
 
+function formatColourSummary(colours: string[]) {
+  if (colours.length === 0) {
+    return 'No hold colour selected';
+  }
+
+  if (colours.length === 1) {
+    return colours[0] ?? '';
+  }
+
+  return `${colours[0]} & ${colours[1]}`;
+}
+
 function getGradeColourValue(grade: string) {
   return climbColours.find((climbColour) => climbColour.label === grade)?.value;
 }
@@ -100,6 +112,7 @@ export function NewClimbPickerModal({ allowQuickAdd = false, onDismiss, visible 
   const [newClimbDraft, setNewClimbDraft] = useState<NewClimbDraft>({ colours: [], grade: selectedGradeOptions[0] ?? 'V0' });
   const [selectedQuickGrade, setSelectedQuickGrade] = useState(sessionQuickGradeOptions[0] ?? 'V0');
   const [gradeTypePickerExpanded, setGradeTypePickerExpanded] = useState(false);
+  const [colourPickerExpanded, setColourPickerExpanded] = useState(false);
   const newClimbGradeIndex = Math.max(0, selectedGradeOptions.indexOf(newClimbDraft.grade));
   const selectedQuickGradeIndex = Math.max(0, sessionQuickGradeOptions.indexOf(selectedQuickGrade));
   const canStartNewClimb = Boolean(activeSession && !activeClimb && newClimbDraft.grade);
@@ -126,6 +139,7 @@ export function NewClimbPickerModal({ allowQuickAdd = false, onDismiss, visible 
 
     setSelectedScaleKey(sessionDefaultScaleKey);
     setGradeTypePickerExpanded(false);
+    setColourPickerExpanded(false);
     setNewClimbDraft({ colours: [], grade: gradeScaleOptions[0]?.scale.gradingScaleGrades[0] ?? 'V0' });
     setSelectedQuickGrade(sessionQuickGradeOptions[0] ?? 'V0');
   }, [gradeScaleOptions, sessionQuickGradeOptions, visible]);
@@ -191,61 +205,61 @@ export function NewClimbPickerModal({ allowQuickAdd = false, onDismiss, visible 
 
         <ScrollView contentContainerStyle={styles.editContent}>
           {allowQuickAdd ? (
-            <View style={styles.quickSection}>
-              <View>
+            <>
+              <View style={styles.quickSection}>
                 <Text style={styles.quickTitle}>Quick climb</Text>
-                <Text style={styles.quickHint}>Log a finished climb without starting a climb timer.</Text>
-              </View>
-              <View style={styles.quickAddRow}>
-                <View style={styles.quickStepper}>
-                  <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Decrease quick climb grade"
-                    accessibilityRole="button"
-                    disabled={selectedQuickGradeIndex === 0}
-                    onPress={() => setSelectedQuickGrade(sessionQuickGradeOptions[Math.max(0, selectedQuickGradeIndex - 1)] ?? selectedQuickGrade)}
-                    style={[styles.quickGradeButton, selectedQuickGradeIndex === 0 && styles.disabledStepperButton]}
-                  >
-                    <Feather name="minus" size={18} color="#B85A3B" />
-                  </TouchableOpacity>
-                  <View style={styles.quickGradeValueWrap}>
-                    {sessionQuickScale.gradingScaleIsTape ? (
-                      <View style={[styles.tapeGradeDotSmall, { backgroundColor: getGradeColourValue(selectedQuickGrade) ?? colors.stone }]} />
-                    ) : null}
-                    <View>
-                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.quickGradeValue}>{sessionQuickScale.gradingScaleIsTape ? `${selectedQuickGrade} Tape` : selectedQuickGrade}</Text>
+                <View style={styles.quickAddRow}>
+                  <View style={styles.quickStepper}>
+                    <TouchableOpacity
+                      activeOpacity={0.76}
+                      accessibilityLabel="Decrease quick climb grade"
+                      accessibilityRole="button"
+                      disabled={selectedQuickGradeIndex === 0}
+                      onPress={() => setSelectedQuickGrade(sessionQuickGradeOptions[Math.max(0, selectedQuickGradeIndex - 1)] ?? selectedQuickGrade)}
+                      style={[styles.quickGradeButton, selectedQuickGradeIndex === 0 && styles.disabledStepperButton]}
+                    >
+                      <Feather name="minus" size={18} color="#B85A3B" />
+                    </TouchableOpacity>
+                    <View style={styles.quickGradeValueWrap}>
                       {sessionQuickScale.gradingScaleIsTape ? (
-                        <Text style={styles.quickGradeMeta}>Est. {formatEstimatedVGradeAverage(selectedQuickGrade, sessionQuickScale)}</Text>
+                        <View style={[styles.tapeGradeDotSmall, { backgroundColor: getGradeColourValue(selectedQuickGrade) ?? colors.stone }]} />
                       ) : null}
+                      <View>
+                        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.quickGradeValue}>{sessionQuickScale.gradingScaleIsTape ? `${selectedQuickGrade} Tape` : selectedQuickGrade}</Text>
+                        {sessionQuickScale.gradingScaleIsTape ? (
+                          <Text style={styles.quickGradeMeta}>Est. {formatEstimatedVGradeAverage(selectedQuickGrade, sessionQuickScale)}</Text>
+                        ) : null}
+                      </View>
                     </View>
+                    <TouchableOpacity
+                      activeOpacity={0.76}
+                      accessibilityLabel="Increase quick climb grade"
+                      accessibilityRole="button"
+                      disabled={selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1}
+                      onPress={() =>
+                        setSelectedQuickGrade(sessionQuickGradeOptions[Math.min(sessionQuickGradeOptions.length - 1, selectedQuickGradeIndex + 1)] ?? selectedQuickGrade)
+                      }
+                      style={[styles.quickGradeButton, selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1 && styles.disabledStepperButton]}
+                    >
+                      <Feather name="plus" size={18} color={colors.charcoal} />
+                    </TouchableOpacity>
                   </View>
                   <TouchableOpacity
-                    activeOpacity={0.76}
-                    accessibilityLabel="Increase quick climb grade"
+                    activeOpacity={0.82}
+                    accessibilityLabel="Quick add climb"
                     accessibilityRole="button"
-                    disabled={selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1}
-                    onPress={() =>
-                      setSelectedQuickGrade(sessionQuickGradeOptions[Math.min(sessionQuickGradeOptions.length - 1, selectedQuickGradeIndex + 1)] ?? selectedQuickGrade)
-                    }
-                    style={[styles.quickGradeButton, selectedQuickGradeIndex === sessionQuickGradeOptions.length - 1 && styles.disabledStepperButton]}
+                    disabled={isLoading || !canQuickAddClimb}
+                    onPress={() => void confirmQuickAddClimb()}
+                    style={[styles.quickAddButton, (isLoading || !canQuickAddClimb) && styles.disabledEditOption]}
                   >
-                    <Feather name="plus" size={18} color={colors.charcoal} />
+                    <Feather name="plus" size={18} color={colors.white} />
+                    <Feather name="zap" size={16} color={colors.white} />
+                    <Text style={styles.quickAddButtonText}>{isLoading ? 'Adding...' : 'Quick Add'}</Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  activeOpacity={0.82}
-                  accessibilityLabel="Quick add climb"
-                  accessibilityRole="button"
-                  disabled={isLoading || !canQuickAddClimb}
-                  onPress={() => void confirmQuickAddClimb()}
-                  style={[styles.quickAddButton, (isLoading || !canQuickAddClimb) && styles.disabledEditOption]}
-                >
-                  <Feather name="plus" size={18} color={colors.white} />
-                  <Feather name="zap" size={16} color={colors.white} />
-                  <Text style={styles.quickAddButtonText}>{isLoading ? 'Adding...' : 'Quick Add'}</Text>
-                </TouchableOpacity>
               </View>
-            </View>
+              <View style={styles.quickSectionDivider} />
+            </>
           ) : null}
 
           <View style={styles.gradeHeaderRow}>
@@ -339,49 +353,81 @@ export function NewClimbPickerModal({ allowQuickAdd = false, onDismiss, visible 
                       setSelectedScaleKey(option.key);
                       setNewClimbDraft((draft) => ({ ...draft, grade: option.scale.gradingScaleGrades[0] ?? draft.grade }));
                     }}
-                  style={[styles.gradeTypeOption, selected && styles.selectedEditOption]}
-                >
-                  <View>
-                    <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradeTypeName}>{option.label}</Text>
-                  </View>
-                  {selected ? <Feather name="check" size={18} color={colors.charcoal} /> : null}
-                </TouchableOpacity>
+                    style={[styles.gradeTypeOption, selected && styles.selectedEditOption]}
+                  >
+                    <View>
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gradeTypeName}>{option.label}</Text>
+                    </View>
+                    {selected ? <Feather name="check" size={18} color={colors.charcoal} /> : null}
+                  </TouchableOpacity>
                 );
               })}
             </View>
           ) : null}
 
-          <Text style={styles.editLabel}>Hold colour</Text>
-          <Text style={styles.activePreferenceHint}>Optional.</Text>
-          <View style={styles.editOptionWrap}>
-            {climbColours.map((climbColour) => {
-              const selected = newClimbDraft.colours.includes(climbColour.label);
-              const disabled = !selected && newClimbDraft.colours.length >= 2;
-
-              return (
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel={`Toggle ${climbColour.label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  disabled={disabled}
-                  key={climbColour.label}
-                  onPress={() => toggleNewClimbColour(climbColour.label)}
-                  style={[styles.editOption, selected && styles.selectedEditOption, disabled && styles.disabledEditOption]}
-                >
-                  <View style={[styles.colourDot, { backgroundColor: climbColour.value }]} />
-                  <Text style={styles.editOptionText}>{climbColour.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.colourHeaderRow}>
+            <Text style={styles.editLabel}>Hold colour</Text>
+            <Text style={styles.activePreferenceHint}>Optional</Text>
           </View>
+          <TouchableOpacity
+            activeOpacity={0.76}
+            accessibilityLabel="Choose hold colour"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: colourPickerExpanded }}
+            onPress={() => setColourPickerExpanded((expanded) => !expanded)}
+            style={styles.colourDropdownButton}
+          >
+            <View style={styles.colourDropdownValueRow}>
+              {newClimbDraft.colours.length > 0 ? (
+                <View style={styles.selectedColourDots}>
+                  {newClimbDraft.colours.map((colour) => (
+                    <View
+                      key={colour}
+                      style={[styles.colourDot, { backgroundColor: climbColours.find((climbColour) => climbColour.label === colour)?.value ?? colors.stone }]}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.colourDropdownValue}>
+                {formatColourSummary(newClimbDraft.colours)}
+              </Text>
+            </View>
+            <Feather name={colourPickerExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+          </TouchableOpacity>
+          {colourPickerExpanded ? (
+            <View style={styles.colourDropdownList}>
+              {climbColours.map((climbColour) => {
+                const selected = newClimbDraft.colours.includes(climbColour.label);
+                const disabled = !selected && newClimbDraft.colours.length >= 2;
+
+                return (
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel={`Toggle ${climbColour.label}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    disabled={disabled}
+                    key={climbColour.label}
+                    onPress={() => toggleNewClimbColour(climbColour.label)}
+                    style={[styles.colourDropdownOption, selected && styles.selectedEditOption, disabled && styles.disabledEditOption]}
+                  >
+                    <View style={styles.colourDropdownOptionLeft}>
+                      <View style={[styles.colourDot, { backgroundColor: climbColour.value }]} />
+                      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.colourDropdownOptionText}>{climbColour.label}</Text>
+                    </View>
+                    {selected ? <Feather name="check" size={18} color={colors.charcoal} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
 
           <View style={styles.confirmActions}>
             <AppButton
               disabled={isLoading || !canStartNewClimb}
               icon="plus"
               onPress={() => void confirmAddNewClimb()}
-              title={isLoading ? 'Adding Climb...' : 'Start Climb'}
+              title={isLoading ? 'Adding Climb...' : 'Add New Climb'}
             />
           </View>
         </ScrollView>
@@ -395,7 +441,60 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '700',
-    marginTop: -spacing.xs,
+  },
+  colourDropdownButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  colourDropdownList: {
+    gap: spacing.sm,
+  },
+  colourDropdownOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 46,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  colourDropdownOptionLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  colourDropdownOptionText: {
+    color: colors.charcoal,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  colourDropdownValue: {
+    color: colors.charcoal,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  colourDropdownValueRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minWidth: 0,
   },
   colourDot: {
     borderColor: 'rgba(30,30,30,0.16)',
@@ -403,6 +502,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 14,
     width: 14,
+  },
+  colourHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   changeGradeTypeButton: {
     alignItems: 'center',
@@ -460,28 +564,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
-  },
-  editOption: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.stone,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 42,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  editOptionText: {
-    color: colors.charcoal,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  editOptionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
   },
   gradeTypeList: {
     gap: spacing.sm,
@@ -557,7 +639,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
   },
   quickAddButtonText: {
@@ -574,9 +656,9 @@ const styles = StyleSheet.create({
     borderColor: colors.stone,
     borderRadius: radius.pill,
     borderWidth: 1,
-    height: 44,
+    height: 40,
     justifyContent: 'center',
-    width: 44,
+    width: 40,
   },
   quickGradeMeta: {
     color: colors.muted,
@@ -600,20 +682,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 0,
   },
-  quickHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-    marginTop: 2,
-  },
   quickSection: {
     backgroundColor: colors.surfaceSoft,
     borderColor: colors.stone,
     borderRadius: radius.xl,
     borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  quickSectionDivider: {
+    backgroundColor: colors.stone,
+    height: 1,
+    width: '100%',
   },
   quickStepper: {
     alignItems: 'center',
@@ -622,9 +702,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 62,
-    padding: spacing.sm,
+    gap: spacing.xs,
+    minHeight: 54,
+    padding: spacing.xs,
   },
   quickTitle: {
     color: colors.charcoal,
@@ -634,6 +714,11 @@ const styles = StyleSheet.create({
   selectedEditOption: {
     backgroundColor: colors.mint,
     borderColor: colors.charcoal,
+  },
+  selectedColourDots: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
   },
   tapeGradeDotSmall: {
     borderColor: colors.stone,

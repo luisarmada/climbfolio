@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { usePathname, useRouter } from 'expo-router';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
@@ -45,16 +45,32 @@ type ActiveSessionBannerProps = {
   onLogClimb: () => void;
 };
 
-export function ActiveSessionBanner({ onLogClimb }: ActiveSessionBannerProps) {
+const BannerSessionDetail = memo(function BannerSessionDetail({
+  statusLabel,
+  startTime,
+}: {
+  statusLabel: string;
+  startTime: string | null | undefined;
+}) {
+  const elapsedSeconds = useElapsedSeconds(startTime);
+
+  return (
+    <Text numberOfLines={1} style={styles.detail}>
+      {formatDuration(elapsedSeconds)} | {statusLabel}
+    </Text>
+  );
+});
+
+export const ActiveSessionBanner = memo(function ActiveSessionBanner({ onLogClimb }: ActiveSessionBannerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const activeClimb = useActiveSessionStore((state) => state.activeClimb);
   const activeSession = useActiveSessionStore((state) => state.activeSession);
   const addAttempt = useActiveSessionStore((state) => state.addAttempt);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
-  const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
   const isActiveSessionRoute = pathname.startsWith('/session/active');
   const canUseQuickAction = !isLoading;
+  const statusLabel = activeClimb ? formatClimbLabel(activeClimb.grade, activeClimb.colour) : 'Resting';
 
   useEffect(() => {
     ensurePulseAnimation();
@@ -99,9 +115,7 @@ export function ActiveSessionBanner({ onLogClimb }: ActiveSessionBannerProps) {
             />
             <Text style={styles.label}>Session in progress</Text>
           </View>
-          <Text numberOfLines={1} style={styles.detail}>
-            {formatDuration(elapsedSeconds)} | {activeClimb ? formatClimbLabel(activeClimb.grade, activeClimb.colour) : 'Resting'}
-          </Text>
+          <BannerSessionDetail startTime={activeSession.startTime} statusLabel={statusLabel} />
         </View>
       </TouchableOpacity>
 
@@ -133,7 +147,7 @@ export function ActiveSessionBanner({ onLogClimb }: ActiveSessionBannerProps) {
       </TouchableOpacity>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   attemptButton: {

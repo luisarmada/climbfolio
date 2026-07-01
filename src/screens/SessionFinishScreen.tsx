@@ -11,8 +11,10 @@ import { colors, radius, spacing, typography } from '../design/tokens';
 import { warmUpHoldType } from '../features/climbs';
 import { getDefaultSessionName, useActiveSessionStore } from '../features/sessions';
 import { formatSessionDate, formatSessionTime } from '../features/summaries';
+import { useToastStore } from '../features/toasts';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { getMainFeature } from '../components/HoldIcon';
+import { getErrorMessage } from '../utils/errorMessage';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 
 type EndSessionMode = 'default' | 'sent' | 'anotherTime' | 'discard';
@@ -42,6 +44,8 @@ export function SessionFinishScreen() {
   const finishActiveClimb = useActiveSessionStore((state) => state.finishActiveClimb);
   const isLoading = useActiveSessionStore((state) => state.isLoading);
   const restoreActiveSession = useActiveSessionStore((state) => state.restoreActiveSession);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const totals = useActiveSessionStore((state) => state.totals);
   const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
   const activeSessionId = activeSession?.id ?? null;
@@ -93,34 +97,50 @@ export function SessionFinishScreen() {
   }, [activeSessionId]);
 
   async function handleDiscardSession() {
-    await discardSession();
-    router.replace('/climb');
+    try {
+      await discardSession();
+      showSuccess('Session discarded');
+      router.replace('/climb');
+    } catch (discardError) {
+      const message = getErrorMessage(discardError, 'Could not discard this session.');
+      setFinishError(message);
+      showError('Session was not discarded', message);
+    }
   }
 
   async function handleFinishSession(mode: EndSessionMode = 'default') {
     setFinishError(null);
 
     if ((mode === 'sent' || mode === 'anotherTime') && activeClimb && !canSaveActiveClimbResult) {
-      setFinishError('Pick a main feature for the active climb before saving it as sent or for another time.');
+      const message = 'Pick a main feature for the active climb before saving it as sent or for another time.';
+      setFinishError(message);
+      showError('Session was not saved', message);
       return;
     }
 
-    if (mode === 'sent') {
-      await finishActiveClimb(true);
-    }
+    try {
+      if (mode === 'sent') {
+        await finishActiveClimb(true);
+      }
 
-    if (mode === 'anotherTime') {
-      await finishActiveClimb(false);
-    }
+      if (mode === 'anotherTime') {
+        await finishActiveClimb(false);
+      }
 
-    if (mode === 'discard') {
-      await discardActiveClimb();
-    }
+      if (mode === 'discard') {
+        await discardActiveClimb();
+      }
 
-    const endedSession = await endSession(sessionFinalizationDraft);
+      const endedSession = await endSession(sessionFinalizationDraft);
 
-    if (endedSession) {
-      router.replace({ pathname: '/session/summary', params: { sessionId: endedSession.id } });
+      if (endedSession) {
+        showSuccess('Session saved');
+        router.replace({ pathname: '/session/summary', params: { sessionId: endedSession.id } });
+      }
+    } catch (saveError) {
+      const message = getErrorMessage(saveError, 'Could not save this session.');
+      setFinishError(message);
+      showError('Session was not saved', message);
     }
   }
 
@@ -128,7 +148,9 @@ export function SessionFinishScreen() {
     setFinishError(null);
 
     if (activeClimb) {
-      setFinishError('Choose how to save the active climb first.');
+      const message = 'Choose how to save the active climb first.';
+      setFinishError(message);
+      showError('Session was not saved', message);
       return;
     }
 

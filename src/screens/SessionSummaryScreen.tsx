@@ -8,6 +8,7 @@ import { CelebrationConfetti } from '../components/CelebrationConfetti';
 import { SessionMonthCalendar } from '../components/SessionMonthCalendar';
 import { StatCard } from '../components/StatCard';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { useProfileStore } from '../features/profile';
 import { getSessionDisplayName } from '../features/sessions';
 import {
   formatDuration,
@@ -76,6 +77,7 @@ export function SessionSummaryScreen() {
   const router = useRouter();
   const { height, width } = useWindowDimensions();
   const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
+  const loadProfile = useProfileStore((state) => state.loadProfile);
   const entryProgress = useRef(new Animated.Value(1)).current;
   const doneProgress = useRef(new Animated.Value(0)).current;
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -96,10 +98,10 @@ export function SessionSummaryScreen() {
         return;
       }
 
-      const [nextSummary, summaries] = await Promise.all([
-        sessionSummaryService.getSessionSummary(sessionId),
-        sessionSummaryService.listCompletedSessionSummaries(),
-      ]);
+      const profile = await loadProfile();
+      const summaries = await sessionSummaryService.listCompletedSessionSummaries({ userIds: [profile.userId] });
+      const nextSummary =
+        summaries.find((item) => item.session.id === sessionId) ?? (await sessionSummaryService.getSessionSummary(sessionId));
       const aggregateStats = summarizeAggregate(summaries);
       const orderedSummaries = [...summaries].sort(
         (left, right) => new Date(left.session.startTime).getTime() - new Date(right.session.startTime).getTime(),
@@ -122,7 +124,7 @@ export function SessionSummaryScreen() {
     return () => {
       isMounted = false;
     };
-  }, [sessionId]);
+  }, [loadProfile, sessionId]);
 
   useEffect(() => {
     entryProgress.setValue(1);

@@ -145,11 +145,14 @@ export function matchesFeatureSearch(feature: string, query: string) {
 export const climbColours = [
   { label: 'Red', value: '#E85845' },
   { label: 'Blue', value: '#4C8BD9' },
+  { label: 'Light blue', value: '#A8DADC' },
   { label: 'Green', value: '#58AA81' },
   { label: 'Yellow', value: '#FFD166' },
   { label: 'Purple', value: '#8F6ED5' },
   { label: 'Black', value: '#1E1E1E' },
+  { label: 'Grey', value: '#8F969A' },
   { label: 'White', value: '#FFFFFF' },
+  { label: 'Clear', value: 'rgba(218, 244, 255, 0.72)' },
   { label: 'Pink', value: '#F59AC7' },
   { label: 'Orange', value: '#FF9666' },
 ];

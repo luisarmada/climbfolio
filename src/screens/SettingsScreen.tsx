@@ -1,9 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, useRouter } from 'expo-router';
+import { useRef } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
+import { useRememberedScrollView } from '../hooks/useRememberedScrollView';
 
 type SettingsRow = {
   detail: string;
@@ -57,9 +59,20 @@ const settingsSections: SettingsSection[] = [
 export function SettingsScreen() {
   const router = useRouter();
   const { returnToProfile } = useProfileReturnTransition();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const rememberedScroll = useRememberedScrollView('/settings', scrollViewRef);
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      nativeID={rememberedScroll.nativeID}
+      ref={scrollViewRef}
+      contentContainerStyle={styles.content}
+      contentOffset={rememberedScroll.initialContentOffset}
+      onContentSizeChange={rememberedScroll.handleContentSizeChange}
+      onScroll={rememberedScroll.handleScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topRow}>
         <TouchableOpacity activeOpacity={0.72} accessibilityLabel="Back to profile" accessibilityRole="button" onPress={returnToProfile} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color={colors.charcoal} />
@@ -73,7 +86,10 @@ export function SettingsScreen() {
         activeOpacity={0.78}
         accessibilityLabel="Manage subscription"
         accessibilityRole="button"
-        onPress={() => router.push('/settings/subscription')}
+        onPress={() => {
+          rememberedScroll.rememberCurrentScrollOffset();
+          router.push('/settings/subscription');
+        }}
         style={styles.subscriptionCard}
       >
         <View style={styles.subscriptionIcon}>
@@ -97,7 +113,10 @@ export function SettingsScreen() {
                 accessibilityLabel={`${row.label}: ${row.detail}`}
                 accessibilityRole="button"
                 key={row.label}
-                onPress={row.href ? () => router.push(row.href as Href) : undefined}
+                onPress={row.href ? () => {
+                  rememberedScroll.rememberCurrentScrollOffset();
+                  router.push(row.href as Href);
+                } : undefined}
                 style={[styles.row, index === section.rows.length - 1 && styles.lastRow]}
               >
                 <View style={styles.rowCopy}>

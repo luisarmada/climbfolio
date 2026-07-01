@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Image, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { colors, radius } from '../design/tokens';
@@ -12,7 +13,7 @@ type ProfilePictureProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-export function ProfilePicture({
+export const ProfilePicture = memo(function ProfilePicture({
   accessibilityLabel = 'Profile picture',
   onPress,
   profilePictureId,
@@ -21,11 +22,19 @@ export function ProfilePicture({
   style,
 }: ProfilePictureProps) {
   const preset = resolveProfilePicturePreset(profilePictureId);
+  const defaultSource = preset && !Array.isArray(preset.source) ? preset.source : undefined;
 
   const content = (
     <View style={[styles.frame, { height: size, width: size }, style]}>
       {preset ? (
-        <Image accessibilityIgnoresInvertColors resizeMode="cover" source={preset.source} style={styles.image} />
+        <Image
+          accessibilityIgnoresInvertColors
+          defaultSource={defaultSource}
+          fadeDuration={0}
+          resizeMode="cover"
+          source={preset.source}
+          style={styles.image}
+        />
       ) : null}
       {showEditBadge ? (
         <View style={styles.editBanner}>
@@ -49,7 +58,7 @@ export function ProfilePicture({
       {content}
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   editBanner: {

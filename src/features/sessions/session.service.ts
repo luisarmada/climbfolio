@@ -7,6 +7,7 @@ import { nowIso } from '../../utils/dates';
 import { inputLimits, normalizeMultilineInput, normalizeSingleLineInput } from '../../utils/inputValidation';
 import { climbingPreferencesService } from '../preferences';
 import { locationService } from '../locations';
+import { invalidateSessionSummaryCache } from '../summaries/session-summary.cache';
 import { ActiveSessionState, ActiveSessionTotals } from './session.types';
 import { normalizeSessionMetadata } from './session.finalization';
 
@@ -31,7 +32,7 @@ async function toActiveSessionState(session: Session): Promise<ActiveSessionStat
 export const sessionService = {
   async startSession(input: { locationId?: string | null } = {}): Promise<ActiveSessionState> {
     try {
-      return await withDatabaseTransaction(async () => {
+      const activeSession = await withDatabaseTransaction(async () => {
         const existingSession = await sessionRepository.getActive();
 
         if (existingSession) {
@@ -63,6 +64,9 @@ export const sessionService = {
 
         return toActiveSessionState(session);
       });
+
+      invalidateSessionSummaryCache();
+      return activeSession;
     } catch (error) {
       if (isDatabaseConstraintError(error)) {
         const existingSession = await sessionRepository.getActive();
@@ -100,7 +104,9 @@ export const sessionService = {
     const endTime = input.endTime ?? nowIso();
     const metadata = normalizeSessionMetadata(input, new Date(endTime));
 
-    return sessionRepository.end(sessionId, { ...metadata, endTime });
+    const endedSession = await sessionRepository.end(sessionId, { ...metadata, endTime });
+    invalidateSessionSummaryCache();
+    return endedSession;
   },
 
   async updateSavedSession(sessionId: string, input: SessionMetadataInput): Promise<Session | null> {
@@ -108,20 +114,26 @@ export const sessionService = {
     const description = normalizeMultilineInput(input.description, inputLimits.sessionDescription) || null;
     const locationName = normalizeSingleLineInput(input.locationName, inputLimits.locationName) || null;
 
-    return sessionRepository.update(sessionId, {
+    const updatedSession = await sessionRepository.update(sessionId, {
       description,
       locationId: locationName ? input.locationId ?? null : null,
       locationName,
       locationType: locationName ? input.locationType ?? null : null,
       name,
     });
+    invalidateSessionSummaryCache();
+    return updatedSession;
   },
 
   async deleteSavedSession(sessionId: string): Promise<Session | null> {
-    return sessionRepository.update(sessionId, { deletedAt: nowIso() });
+    const deletedSession = await sessionRepository.update(sessionId, { deletedAt: nowIso() });
+    invalidateSessionSummaryCache();
+    return deletedSession;
   },
 
   async discardSession(sessionId: string): Promise<Session | null> {
-    return sessionRepository.update(sessionId, { deletedAt: nowIso() });
+    const discardedSession = await sessionRepository.update(sessionId, { deletedAt: nowIso() });
+    invalidateSessionSummaryCache();
+    return discardedSession;
   },
 };
