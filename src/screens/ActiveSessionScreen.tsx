@@ -27,7 +27,6 @@ import {
   warmUpHoldType,
 } from '../features/climbs';
 import { useActiveSessionStore } from '../features/sessions';
-import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 
 const destructiveRed = '#B85A3B';
@@ -82,6 +81,22 @@ function getTimelineItems(climbs: Climb[]): TimelineItem[] {
 
       return [...items, { climb, type: 'climb' }];
     }, []);
+}
+
+function getLongSessionPromptDelayMs(startTime: string | null | undefined) {
+  if (!startTime) {
+    return null;
+  }
+
+  const startedAt = new Date(startTime).getTime();
+
+  if (Number.isNaN(startedAt)) {
+    return null;
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - startedAt);
+
+  return Math.max(0, longSessionThresholdSeconds * 1000 - elapsedMs);
 }
 
 function flattenTimelineItemIds(items: TimelineItem[]) {
@@ -316,8 +331,7 @@ export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSes
   const undoAttempt = useActiveSessionStore((state) => state.undoAttempt);
   const updateActiveClimb = useActiveSessionStore((state) => state.updateActiveClimb);
   const updateLoggedClimb = useActiveSessionStore((state) => state.updateLoggedClimb);
-  const elapsedSeconds = useElapsedSeconds(activeSession?.startTime);
-  const timelineItems = getTimelineItems(climbs);
+  const timelineItems = useMemo(() => getTimelineItems(climbs), [climbs]);
   const hasLoggedTimelineClimbs = timelineItems.length > 0;
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
@@ -398,15 +412,24 @@ export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSes
       !hasActiveSessionRestoreSettled ||
       isLoading ||
       !activeSessionId ||
-      longSessionPromptId === activeSessionId ||
-      elapsedSeconds < longSessionThresholdSeconds
+      longSessionPromptId === activeSessionId
     ) {
-      return;
+      return undefined;
     }
 
-    setLongSessionPromptId(activeSessionId);
-    setIsLongSessionPromptVisible(true);
-  }, [activeSessionId, elapsedSeconds, hasActiveSessionRestoreSettled, isLoading, longSessionPromptId]);
+    const delayMs = getLongSessionPromptDelayMs(activeSession?.startTime);
+
+    if (delayMs === null) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setLongSessionPromptId(activeSessionId);
+      setIsLongSessionPromptVisible(true);
+    }, delayMs);
+
+    return () => clearTimeout(timeoutId);
+  }, [activeSession?.startTime, activeSessionId, hasActiveSessionRestoreSettled, isLoading, longSessionPromptId]);
 
   useEffect(() => {
     if (!celebratingClimbId) {
@@ -795,7 +818,7 @@ export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSes
         />
       </View>
 
-      <SessionLiveStatsRow attempts={totals.attemptsLogged} climbs={totals.climbsLogged} elapsedSeconds={elapsedSeconds} />
+      <SessionLiveStatsRow attempts={totals.attemptsLogged} climbs={totals.climbsLogged} startTime={activeSession?.startTime} />
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {finishPrompt ? <Text style={styles.errorText}>{finishPrompt}</Text> : null}
@@ -863,6 +886,7 @@ export function ActiveSessionScreen({ disableEntryAnimation = false }: ActiveSes
               gradeOptions={activeClimbScale?.gradingScaleGrades ?? sessionGradeOptions}
               gradingScaleIsTape={activeClimbScale?.gradingScaleIsTape ?? sessionIsTapeScale}
               gradingScaleVGradeRanges={activeClimbScale?.gradingScaleVGradeRanges ?? activeSession.gradingScaleVGradeRanges}
+              highlightRequired={finishPrompt === 'Finish the current climb first.'}
               mainFeatureRequiredSignal={mainFeatureRequiredSignal}
               onAddAttempt={() => void addAttempt()}
               onDelete={() => void deleteClimb(activeClimb.id)}

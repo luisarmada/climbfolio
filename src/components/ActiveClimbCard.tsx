@@ -38,6 +38,7 @@ type ActiveClimbCardProps = {
   gradeOptions?: string[];
   gradingScaleIsTape?: boolean;
   gradingScaleVGradeRanges?: Record<string, VGradeRange>;
+  highlightRequired?: boolean;
   mainFeatureRequiredSignal?: number;
   onAddAttempt: () => void;
   onDelete: () => void;
@@ -106,6 +107,7 @@ export function ActiveClimbCard({
   gradeOptions = climbGrades,
   gradingScaleIsTape = false,
   gradingScaleVGradeRanges = {},
+  highlightRequired = false,
   mainFeatureRequiredSignal = 0,
   onAddAttempt,
   onDelete,
@@ -277,7 +279,7 @@ export function ActiveClimbCard({
   }
 
   return (
-    <AppCard style={styles.card}>
+    <AppCard style={[styles.card, highlightRequired && styles.requiredCard]}>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>Current Climb</Text>
@@ -603,12 +605,14 @@ export function DoneClimbCard({
   onDelete,
   onEdit,
 }: DoneClimbCardProps) {
+  const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const visibleHoldTypes = getVisibleHoldTypes(climb);
   const mainFeature = getMainFeature(visibleHoldTypes);
   const additionalFeatures = getAdditionalFeatures(visibleHoldTypes);
   const featureDetails = [mainFeature, ...additionalFeatures].filter(Boolean).join(' + ');
   const selectedColours = parseColours(climb.colour);
   const shouldShowHoldIcons = selectedColours.length > 0;
+  const shouldShowHoldColourLabel = !gradingScaleIsTape && selectedColours.length > 0;
   const colourLabel = formatColourDisplay(selectedColours);
   const gradeLabel = formatClimbGradeLabel(climb.grade, gradingScaleIsTape);
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -665,71 +669,106 @@ export function DoneClimbCard({
     ]).start();
   }, [cardScale, cardTranslateY, celebrate, celebrationOpacity, celebrationScale]);
 
+  function confirmDelete() {
+    setIsDeleteConfirmVisible(false);
+    onDelete?.();
+  }
+
   return (
-    <Animated.View style={{ transform: [{ translateY: cardTranslateY }, { scale: cardScale }] }}>
-      <AppCard style={styles.doneCard}>
-        {celebrate && climb.completed ? (
-          <Animated.View pointerEvents="none" style={[styles.doneCelebrationOverlay, { opacity: celebrationOpacity }]} />
-        ) : null}
-        {celebrate && climb.completed ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.doneCelebrationBadge,
-              {
-                opacity: celebrationOpacity,
-                transform: [{ scale: celebrationScale }],
-              },
-            ]}
-          >
-            <Feather name="zap" size={13} color={colors.charcoal} />
-            <Text style={styles.doneCelebrationText}>Sent!</Text>
-          </Animated.View>
-        ) : null}
-        <View style={styles.doneCardContent}>
-          <View style={styles.doneHeader}>
-            <View style={styles.doneMain}>
-              {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={34} /> : null}
-              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneGrade}>{gradeLabel}</Text>
-              {climb.colour ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneMeta}>{colourLabel}</Text> : null}
-              <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.anotherTimeState]}>
-                {climb.completed ? 'Sent it' : 'Another time'}
-              </Text>
+    <>
+      <Animated.View style={{ transform: [{ translateY: cardTranslateY }, { scale: cardScale }] }}>
+        <AppCard style={styles.doneCard}>
+          {celebrate && climb.completed ? (
+            <Animated.View pointerEvents="none" style={[styles.doneCelebrationOverlay, { opacity: celebrationOpacity }]} />
+          ) : null}
+          {celebrate && climb.completed ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.doneCelebrationBadge,
+                {
+                  opacity: celebrationOpacity,
+                  transform: [{ scale: celebrationScale }],
+                },
+              ]}
+            >
+              <Feather name="zap" size={13} color={colors.charcoal} />
+              <Text style={styles.doneCelebrationText}>Sent!</Text>
+            </Animated.View>
+          ) : null}
+          <View style={styles.doneCardContent}>
+            <View style={styles.doneHeader}>
+              <View style={styles.doneMain}>
+                {mainFeature && shouldShowHoldIcons ? <HoldIcon colours={selectedColours} holdType={mainFeature} size={34} /> : null}
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneGrade}>{gradeLabel}</Text>
+                {shouldShowHoldColourLabel ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneMeta}>{colourLabel}</Text> : null}
+                <Text style={[styles.doneState, climb.completed ? styles.sentState : styles.anotherTimeState]}>
+                  {climb.completed ? 'Sent it' : 'Another time'}
+                </Text>
+              </View>
+              <View style={styles.doneIconActions}>
+                {onEdit ? (
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel={`Edit ${gradeLabel} climb`}
+                    accessibilityRole="button"
+                    disabled={disabled}
+                    onPress={onEdit}
+                    style={styles.doneEditButton}
+                  >
+                    <Feather name="edit-2" size={15} color={colors.charcoal} />
+                  </TouchableOpacity>
+                ) : null}
+                {onDelete ? (
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    accessibilityLabel={`Delete ${gradeLabel} climb`}
+                    accessibilityRole="button"
+                    disabled={disabled}
+                    onPress={() => setIsDeleteConfirmVisible(true)}
+                    style={styles.doneIconButton}
+                  >
+                    <Feather name="trash-2" size={16} color={destructiveRed} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
-            <View style={styles.doneIconActions}>
-              {onEdit ? (
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel={`Edit ${gradeLabel} climb`}
-                  accessibilityRole="button"
-                  disabled={disabled}
-                  onPress={onEdit}
-                  style={styles.doneEditButton}
-                >
-                  <Feather name="edit-2" size={15} color={colors.charcoal} />
-                </TouchableOpacity>
-              ) : null}
-              {onDelete ? (
-                <TouchableOpacity
-                  activeOpacity={0.76}
-                  accessibilityLabel={`Delete ${gradeLabel} climb`}
-                  accessibilityRole="button"
-                  disabled={disabled}
-                  onPress={onDelete}
-                  style={styles.doneIconButton}
-                >
-                  <Feather name="trash-2" size={16} color={destructiveRed} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.doneDetails}>
+              {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'}
+              {featureDetails ? ` - ${featureDetails}` : ''}
+            </Text>
           </View>
-          <Text style={styles.doneDetails}>
-            {climb.attemptCount} {climb.attemptCount === 1 ? 'attempt' : 'attempts'}
-            {featureDetails ? ` - ${featureDetails}` : ''}
-          </Text>
-        </View>
-      </AppCard>
-    </Animated.View>
+        </AppCard>
+      </Animated.View>
+
+      <DismissibleModal onDismiss={() => setIsDeleteConfirmVisible(false)} visible={isDeleteConfirmVisible}>
+        <AppCard style={styles.deleteConfirmCard}>
+          <View style={styles.deleteConfirmHeader}>
+            <Text style={styles.deleteConfirmTitle}>Delete climb?</Text>
+            <TouchableOpacity
+              activeOpacity={0.76}
+              accessibilityLabel="Close delete climb confirmation"
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() => setIsDeleteConfirmVisible(false)}
+              style={styles.deleteConfirmCloseButton}
+            >
+              <Feather name="x" size={18} color={colors.charcoal} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.deleteConfirmCopy}>This removes the completed climb from your session timeline. This cannot be undone.</Text>
+          <View style={styles.deleteConfirmActions}>
+            <AppButton
+              disabled={disabled}
+              icon="trash-2"
+              onPress={confirmDelete}
+              title="Delete climb"
+              variant="destructive"
+            />
+          </View>
+        </AppCard>
+      </DismissibleModal>
+    </>
   );
 }
 
@@ -760,12 +799,54 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
   },
+  requiredCard: {
+    borderColor: destructiveRed,
+    borderWidth: 2,
+  },
   colourDot: {
     borderColor: 'rgba(30,30,30,0.16)',
     borderRadius: radius.pill,
     borderWidth: 1,
     height: 16,
     width: 16,
+  },
+  deleteConfirmActions: {
+    gap: spacing.md,
+  },
+  deleteConfirmCard: {
+    maxWidth: 420,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  deleteConfirmCloseButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.stone,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  deleteConfirmCopy: {
+    color: colors.muted,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 22,
+    marginBottom: spacing.xl,
+  },
+  deleteConfirmHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  deleteConfirmTitle: {
+    ...typography.h2,
+    color: colors.charcoal,
+    flex: 1,
+    marginBottom: spacing.sm,
   },
   dropdownCard: {
     maxHeight: '100%',

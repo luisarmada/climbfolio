@@ -1,12 +1,22 @@
 import { Feather } from '@expo/vector-icons';
-import { Href, usePathname, useRouter } from 'expo-router';
+import { Href, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, spacing } from '../design/tokens';
-
-export type ScreenKey = 'home' | 'climb' | 'profile';
+import {
+  clearRememberedScrollOffset,
+  createRouteHref,
+  createRouteKey,
+  getRememberedRouteForTab,
+  getTabForPathname,
+  getTabRootPath,
+  isTabRootPath,
+  rememberRouteForPath,
+  resetRememberedRouteForTab,
+  TabKey,
+} from '../navigation/tabState';
 
 type NavItem = {
-  key: ScreenKey;
+  key: TabKey;
   href: Href;
   label: string;
   icon: keyof typeof Feather.glyphMap;
@@ -18,39 +28,47 @@ const items: NavItem[] = [
   { key: 'profile', href: '/profile', label: 'Profile', icon: 'user' },
 ];
 
-function getActiveScreen(pathname: string): ScreenKey {
-  if (pathname.startsWith('/climb') || pathname.startsWith('/session')) {
-    return 'climb';
-  }
-
-  if (pathname.startsWith('/profile') || pathname.startsWith('/settings') || pathname.startsWith('/calendar') || pathname.startsWith('/collection')) {
-    return 'profile';
-  }
-
-  return 'home';
-}
-
 type BottomNavProps = {
+  onActiveTabPress?: (key: TabKey) => void;
   onProfilePress?: () => void;
 };
 
-export function BottomNav({ onProfilePress }: BottomNavProps) {
+export function BottomNav({ onActiveTabPress, onProfilePress }: BottomNavProps) {
   const pathname = usePathname();
+  const searchParams = useGlobalSearchParams();
   const router = useRouter();
-  const active = getActiveScreen(pathname);
-  const handlePress = (href: Href) => {
-    const target = href.toString();
+  const active = getTabForPathname(pathname);
+  const handlePress = (item: NavItem) => {
+    rememberRouteForPath(pathname, createRouteHref(pathname, searchParams));
 
-    if (pathname === target) {
+    if (item.key === active) {
+      if (isTabRootPath(item.key, pathname)) {
+        onActiveTabPress?.(item.key);
+        return;
+      }
+
+      if (item.key === 'profile') {
+        resetRememberedRouteForTab(item.key);
+
+        if (onProfilePress) {
+          onProfilePress();
+          return;
+        }
+
+        router.replace(item.href);
+        return;
+      }
+
+      const currentRouteKey = createRouteKey(pathname, searchParams);
+      resetRememberedRouteForTab(item.key);
+      clearRememberedScrollOffset(currentRouteKey);
+      clearRememberedScrollOffset(getTabRootPath(item.key));
+
+      router.replace(item.href);
       return;
     }
 
-    if (target === '/profile' && onProfilePress) {
-      onProfilePress();
-      return;
-    }
-
-    router.replace(href);
+    router.replace(getRememberedRouteForTab(item.key));
   };
 
   return (
@@ -65,7 +83,7 @@ export function BottomNav({ onProfilePress }: BottomNavProps) {
               accessibilityLabel={item.label}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
-              onPress={() => handlePress(item.href)}
+              onPress={() => handlePress(item)}
               style={styles.item}
             >
               <Feather name={item.icon} size={27} color={isActive ? colors.charcoal : colors.muted} strokeWidth={isActive ? 2.7 : 2.2} />

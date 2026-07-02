@@ -166,6 +166,12 @@ export async function runMigrations(database: DatabaseClient) {
       await database.execAsync('ALTER TABLE user_profile ADD COLUMN profile_picture_uri TEXT;');
     }
 
+    if (currentVersion > 0 && currentVersion < 14) {
+      await database.execAsync("ALTER TABLE sessions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'user_local';");
+      await database.execAsync("ALTER TABLE user_profile ADD COLUMN user_id TEXT NOT NULL DEFAULT 'user_local';");
+      await database.execAsync('CREATE INDEX IF NOT EXISTS idx_sessions_user_completed ON sessions(user_id, end_time, deleted_at);');
+    }
+
     await database.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?);',
       [schemaVersion, nowIso()],

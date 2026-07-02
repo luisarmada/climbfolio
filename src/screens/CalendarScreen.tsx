@@ -1,10 +1,12 @@
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
+import { useProfileStore } from '../features/profile';
 import {
   CalendarStats,
   formatMonthLabel,
@@ -76,6 +78,7 @@ function groupSummariesByDay(summaries: SessionSummary[]) {
 export function CalendarScreen() {
   const router = useRouter();
   const { returnToProfile } = useProfileReturnTransition();
+  const loadProfile = useProfileStore((state) => state.loadProfile);
   const [calendarStats, setCalendarStats] = useState<CalendarStats>({
     highestWeeklyStreak: 0,
     restDaysSinceLastSession: 0,
@@ -88,11 +91,14 @@ export function CalendarScreen() {
   const summariesByDay = useMemo(() => groupSummariesByDay(summaries), [summaries]);
   const todayKey = getLocalDayKey(new Date());
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadCalendar() {
-      const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+      const profile = await loadProfile();
+      const summaries = await sessionSummaryService.listCompletedSessionSummaries({
+        userIds: [profile.userId],
+      });
 
       if (isMounted) {
         setSummaries(summaries);
@@ -106,7 +112,7 @@ export function CalendarScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadProfile]));
 
   function openCalendarDay(dayKey: string) {
     const daySummaries = summariesByDay.get(dayKey) ?? [];

@@ -2,6 +2,7 @@ export type ProfileBadgePreference = 'best_grade';
 
 export type UserProfile = {
   id: string;
+  userId: string;
   displayName: string;
   tagline: string;
   badgePreference: ProfileBadgePreference;

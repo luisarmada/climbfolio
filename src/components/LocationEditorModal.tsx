@@ -6,6 +6,8 @@ import { builtInGradingScales } from '../domain/gradeScales';
 import { ClimbingLocation, ClimbingLocationType } from '../domain/models';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 import { AppButton } from './AppButton';
 import { AppCard } from './AppCard';
@@ -43,6 +45,8 @@ export function LocationEditorModal({
   const createLocation = useLocationStore((state) => state.createLocation);
   const isLoading = useLocationStore((state) => state.isLoading);
   const updateLocation = useLocationStore((state) => state.updateLocation);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const loadPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const preferences = useClimbingPreferencesStore((state) => state.preferences);
   const [draftGradeScaleId, setDraftGradeScaleId] = useState(defaultGradeScaleId);
@@ -81,22 +85,27 @@ export function LocationEditorModal({
       return;
     }
 
-    const location = editingLocation
-      ? await updateLocation(editingLocation.id, {
-          gradingScaleId: draftGradeScaleId,
-          name: draftName,
-          type: draftType,
-        })
-      : await createLocation({
-          gradingScaleId: draftGradeScaleId,
-          isSelected: isSelectedOnCreate,
-          name: draftName,
-          type: draftType,
-        });
+    try {
+      const location = editingLocation
+        ? await updateLocation(editingLocation.id, {
+            gradingScaleId: draftGradeScaleId,
+            name: draftName,
+            type: draftType,
+          })
+        : await createLocation({
+            gradingScaleId: draftGradeScaleId,
+            isSelected: isSelectedOnCreate,
+            name: draftName,
+            type: draftType,
+          });
 
-    if (location) {
-      await onSaved?.(location);
-      onDismiss();
+      if (location) {
+        await onSaved?.(location);
+        showSuccess(editingLocation ? 'Location updated' : 'Location added');
+        onDismiss();
+      }
+    } catch (saveError) {
+      showError(editingLocation ? 'Location was not updated' : 'Location was not added', getErrorMessage(saveError, 'Could not save this location.'));
     }
   }
 

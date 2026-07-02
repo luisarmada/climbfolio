@@ -12,6 +12,7 @@ export {
   findCollectionCellSessionMatches,
   getCellState,
   getCollectionGradeIndex,
+  getCollectionScaleKeyForGradingScaleId,
   getPreferredCollectionScaleKey,
   isBestSentCell,
 } from './collection.service';

@@ -6,6 +6,8 @@ import { colors, fonts, radius, spacing } from '../design/tokens';
 import { ClimbingLocation, ClimbingLocationType } from '../domain/models';
 import { getSessionDisplayName, sessionService } from '../features/sessions';
 import { SessionSummary, sessionSummaryService } from '../features/summaries';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 import { AppButton } from './AppButton';
 import { AppCard } from './AppCard';
@@ -30,10 +32,6 @@ type SessionEditorDraft = {
   name: string;
 };
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Could not update this session.';
-}
-
 function createDraft(summary: SessionSummary): SessionEditorDraft {
   return {
     description: summary.session.description ?? '',
@@ -51,6 +49,8 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [mode, setMode] = useState<EditorMode>('details');
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
 
   useEffect(() => {
     if (visible && summary) {
@@ -109,9 +109,12 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
         onSaved?.(nextSummary);
       }
 
+      showSuccess('Session details saved');
       handleDismiss();
     } catch (saveError) {
-      setError(getErrorMessage(saveError));
+      const message = getErrorMessage(saveError, 'Could not update this session.');
+      setError(message);
+      showError('Session was not saved', message);
     } finally {
       setIsSaving(false);
     }
@@ -128,10 +131,13 @@ export function SavedSessionEditorModal({ onDeleted, onDismiss, onSaved, summary
     try {
       await sessionService.deleteSavedSession(summary.session.id);
       setIsDeleteConfirmVisible(false);
+      showSuccess('Session deleted');
       onDeleted?.(summary.session.id);
       handleDismiss();
     } catch (deleteError) {
-      setError(getErrorMessage(deleteError));
+      const message = getErrorMessage(deleteError, 'Could not delete this session.');
+      setError(message);
+      showError('Session was not deleted', message);
       setIsDeleteConfirmVisible(false);
     } finally {
       setIsSaving(false);

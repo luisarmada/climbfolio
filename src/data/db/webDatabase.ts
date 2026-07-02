@@ -1,7 +1,9 @@
 import { DatabaseClient, SqlParams } from './types';
+import { localUserId } from '../../domain/userIdentity';
 
 type SessionRow = {
   id: string;
+  user_id?: string | null;
   name?: string | null;
   description?: string | null;
   start_time: string;
@@ -55,6 +57,7 @@ type AttemptRow = {
 
 type UserProfileRow = {
   id: string;
+  user_id?: string | null;
   display_name: string;
   climber_type: string;
   badge_preference: string;
@@ -164,6 +167,7 @@ function readState(): WebDatabaseState {
       profiles: (state.profiles ?? []).map((profile) => ({
         ...profile,
         profile_picture_uri: profile.profile_picture_uri ?? null,
+        user_id: profile.user_id ?? localUserId,
       })),
       locations: state.locations ?? [],
       sessions: (state.sessions ?? []).map((session) => ({
@@ -179,6 +183,7 @@ function readState(): WebDatabaseState {
         location_name: session.location_name ?? null,
         location_type: session.location_type ?? null,
         name: session.name ?? null,
+        user_id: session.user_id ?? localUserId,
       })),
     };
   } catch {
@@ -198,6 +203,23 @@ function sortByDesc<T>(items: T[], select: (item: T) => string | null) {
 
 function sortByAsc<T>(items: T[], select: (item: T) => string | null) {
   return [...items].sort((left, right) => (select(left) ?? '').localeCompare(select(right) ?? ''));
+}
+
+function countInClauseParams(sql: string, token: string) {
+  const tokenIndex = sql.indexOf(token);
+
+  if (tokenIndex < 0) {
+    return 0;
+  }
+
+  const openIndex = sql.indexOf('(', tokenIndex);
+  const closeIndex = sql.indexOf(')', openIndex);
+
+  if (openIndex < 0 || closeIndex < 0) {
+    return 0;
+  }
+
+  return (sql.slice(openIndex, closeIndex).match(/\?/g) ?? []).length;
 }
 
 class WebDatabase implements DatabaseClient {
@@ -257,28 +279,48 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into sessions')) {
-      if (params.length === 17) {
+      if (params.length === 18 || params.length === 17) {
+        const hasUserId = params.length === 18;
         const [
           id,
-          name,
-          description,
-          startTime,
-          endTime,
-          durationSeconds,
-          gradingScaleType,
-          gradingScaleName,
-          gradingScaleGradesJson,
-          gradingScaleIsTape,
-          gradingScaleRangesJson,
-          locationId,
-          locationName,
-          locationType,
-          createdAt,
-          updatedAt,
-          deletedAt,
+          maybeUserIdOrName,
+          maybeNameOrDescription,
+          maybeDescriptionOrStartTime,
+          maybeStartTimeOrEndTime,
+          maybeEndTimeOrDurationSeconds,
+          maybeDurationSecondsOrGradingScaleType,
+          maybeGradingScaleTypeOrName,
+          maybeGradingScaleNameOrGradesJson,
+          maybeGradingScaleGradesJsonOrTape,
+          maybeGradingScaleIsTapeOrRangesJson,
+          maybeGradingScaleRangesJsonOrLocationId,
+          maybeLocationIdOrName,
+          maybeLocationNameOrType,
+          maybeLocationTypeOrCreatedAt,
+          maybeCreatedAtOrUpdatedAt,
+          maybeUpdatedAtOrDeletedAt,
+          maybeDeletedAt,
         ] = params;
+        const userId = hasUserId ? maybeUserIdOrName : localUserId;
+        const name = hasUserId ? maybeNameOrDescription : maybeUserIdOrName;
+        const description = hasUserId ? maybeDescriptionOrStartTime : maybeNameOrDescription;
+        const startTime = hasUserId ? maybeStartTimeOrEndTime : maybeDescriptionOrStartTime;
+        const endTime = hasUserId ? maybeEndTimeOrDurationSeconds : maybeStartTimeOrEndTime;
+        const durationSeconds = hasUserId ? maybeDurationSecondsOrGradingScaleType : maybeEndTimeOrDurationSeconds;
+        const gradingScaleType = hasUserId ? maybeGradingScaleTypeOrName : maybeDurationSecondsOrGradingScaleType;
+        const gradingScaleName = hasUserId ? maybeGradingScaleNameOrGradesJson : maybeGradingScaleTypeOrName;
+        const gradingScaleGradesJson = hasUserId ? maybeGradingScaleGradesJsonOrTape : maybeGradingScaleNameOrGradesJson;
+        const gradingScaleIsTape = hasUserId ? maybeGradingScaleIsTapeOrRangesJson : maybeGradingScaleGradesJsonOrTape;
+        const gradingScaleRangesJson = hasUserId ? maybeGradingScaleRangesJsonOrLocationId : maybeGradingScaleIsTapeOrRangesJson;
+        const locationId = hasUserId ? maybeLocationIdOrName : maybeGradingScaleRangesJsonOrLocationId;
+        const locationName = hasUserId ? maybeLocationNameOrType : maybeLocationIdOrName;
+        const locationType = hasUserId ? maybeLocationTypeOrCreatedAt : maybeLocationNameOrType;
+        const createdAt = hasUserId ? maybeCreatedAtOrUpdatedAt : maybeLocationTypeOrCreatedAt;
+        const updatedAt = hasUserId ? maybeUpdatedAtOrDeletedAt : maybeCreatedAtOrUpdatedAt;
+        const deletedAt = hasUserId ? maybeDeletedAt : maybeUpdatedAtOrDeletedAt;
         this.insertSession({
           id: String(id),
+          user_id: userId == null ? localUserId : String(userId),
           name: name == null ? null : String(name),
           description: description == null ? null : String(description),
           start_time: String(startTime),
@@ -359,6 +401,7 @@ class WebDatabase implements DatabaseClient {
           : maybeGradingScaleTypeOrGradesJson;
       this.insertSession({
         id: String(id),
+        user_id: localUserId,
         name: name == null ? null : String(name),
         description: description == null ? null : String(description),
         start_time: String(startTime),
@@ -380,14 +423,20 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into user_profile')) {
-      const [id, displayName, tagline, badgePreference, maybeProfilePictureUriOrCreatedAt, maybeCreatedAtOrUpdatedAt, maybeUpdatedAtOrDeletedAt, maybeDeletedAt] = params;
-      const hasProfilePictureUri = params.length === 8;
+      const [id, maybeUserIdOrDisplayName, maybeDisplayNameOrTagline, maybeTaglineOrBadgePreference, maybeBadgePreferenceOrProfilePictureUri, maybeProfilePictureUriOrCreatedAt, maybeCreatedAtOrUpdatedAt, maybeUpdatedAtOrDeletedAt, maybeDeletedAt] = params;
+      const hasUserId = params.length === 9;
+      const userId = hasUserId ? maybeUserIdOrDisplayName : localUserId;
+      const displayName = hasUserId ? maybeDisplayNameOrTagline : maybeUserIdOrDisplayName;
+      const tagline = hasUserId ? maybeTaglineOrBadgePreference : maybeDisplayNameOrTagline;
+      const badgePreference = hasUserId ? maybeBadgePreferenceOrProfilePictureUri : maybeTaglineOrBadgePreference;
+      const hasProfilePictureUri = params.length === 9 || params.length === 8;
       const profilePictureUri = hasProfilePictureUri ? maybeProfilePictureUriOrCreatedAt : null;
       const createdAt = hasProfilePictureUri ? maybeCreatedAtOrUpdatedAt : maybeProfilePictureUriOrCreatedAt;
       const updatedAt = hasProfilePictureUri ? maybeUpdatedAtOrDeletedAt : maybeCreatedAtOrUpdatedAt;
       const deletedAt = hasProfilePictureUri ? maybeDeletedAt : maybeUpdatedAtOrDeletedAt;
       this.state.profiles.push({
         id: String(id),
+        user_id: userId == null ? localUserId : String(userId),
         badge_preference: String(badgePreference),
         climber_type: String(tagline),
         created_at: String(createdAt),
@@ -774,6 +823,43 @@ class WebDatabase implements DatabaseClient {
         rows = rows.filter((session) => session.deleted_at === null);
       }
 
+      if (!normalizedSql.includes('where id = ?')) {
+        let paramIndex = 0;
+        const userIdCount = countInClauseParams(normalizedSql, 'user_id in');
+        const sessionIdCount = countInClauseParams(normalizedSql, ' id in');
+
+        if (userIdCount > 0) {
+          const userIds = new Set(params.slice(paramIndex, paramIndex + userIdCount).map((value) => String(value)));
+          rows = rows.filter((session) => userIds.has(session.user_id ?? localUserId));
+          paramIndex += userIdCount;
+        }
+
+        if (sessionIdCount > 0) {
+          const sessionIds = new Set(params.slice(paramIndex, paramIndex + sessionIdCount).map((value) => String(value)));
+          rows = rows.filter((session) => sessionIds.has(session.id));
+          paramIndex += sessionIdCount;
+        }
+
+        if (normalizedSql.includes('start_time >= ?')) {
+          const startTimeFrom = String(params[paramIndex]);
+          rows = rows.filter((session) => session.start_time >= startTimeFrom);
+          paramIndex += 1;
+        }
+
+        if (normalizedSql.includes('start_time < ?')) {
+          const startTimeBefore = String(params[paramIndex]);
+          rows = rows.filter((session) => session.start_time < startTimeBefore);
+          paramIndex += 1;
+        }
+
+        if (normalizedSql.includes('location_id = ?')) {
+          const locationId = String(params[paramIndex]);
+          rows = rows.filter((session) => session.location_id === locationId);
+        } else if (normalizedSql.includes('location_id is null')) {
+          rows = rows.filter((session) => session.location_id === null);
+        }
+      }
+
       return sortByDesc(rows, (session) => session.start_time) as T[];
     }
 
@@ -835,6 +921,14 @@ class WebDatabase implements DatabaseClient {
 
       if (normalizedSql.includes('where id = ?')) {
         rows = rows.filter((climb) => climb.id === firstParam && climb.deleted_at === null);
+      } else if (normalizedSql.includes('session_id in')) {
+        const sessionIdCount = countInClauseParams(normalizedSql, 'session_id in');
+        const sessionIds = new Set(params.slice(0, sessionIdCount).map((value) => String(value)));
+        rows = rows.filter((climb) => sessionIds.has(climb.session_id) && climb.deleted_at === null);
+
+        if (normalizedSql.includes('completed = 1')) {
+          rows = rows.filter((climb) => climb.completed === 1);
+        }
       } else if (normalizedSql.includes('session_id = ?')) {
         rows = rows.filter((climb) => climb.session_id === firstParam && climb.deleted_at === null);
 
@@ -860,6 +954,10 @@ class WebDatabase implements DatabaseClient {
 
       if (normalizedSql.includes('where id = ?')) {
         rows = rows.filter((attempt) => attempt.id === firstParam && attempt.deleted_at === null);
+      } else if (normalizedSql.includes('climb_id in')) {
+        const climbIdCount = countInClauseParams(normalizedSql, 'climb_id in');
+        const climbIds = new Set(params.slice(0, climbIdCount).map((value) => String(value)));
+        rows = rows.filter((attempt) => climbIds.has(attempt.climb_id) && attempt.deleted_at === null);
       } else if (normalizedSql.includes('climb_id = ?')) {
         rows = rows.filter((attempt) => attempt.climb_id === firstParam && attempt.deleted_at === null);
 

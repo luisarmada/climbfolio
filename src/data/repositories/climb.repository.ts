@@ -35,11 +35,16 @@ export type ClimbRepository = {
   getById(climbId: string): Promise<Climb | null>;
   getLastFinishedBySessionId(sessionId: string): Promise<Climb | null>;
   listBySessionId(sessionId: string): Promise<Climb[]>;
+  listBySessionIds(sessionIds: string[], options?: { completedOnly?: boolean }): Promise<Climb[]>;
   reorderSessionClimbs(sessionId: string, climbIds: string[]): Promise<void>;
   update(climbId: string, input: UpdateClimbInput): Promise<Climb | null>;
   finish(climbId: string, input?: { completed?: boolean; endTime?: string }): Promise<Climb | null>;
   discard(climbId: string, deletedAt?: string): Promise<Climb | null>;
 };
+
+function placeholders(values: unknown[]) {
+  return values.map(() => '?').join(', ');
+}
 
 function parseJsonArray(value: string | null | undefined) {
   if (!value) {
@@ -230,6 +235,30 @@ export const climbRepository: ClimbRepository = {
         ORDER BY sort_order ASC, start_time ASC;
       `,
       [sessionId],
+    );
+
+    return rows.map(mapClimb);
+  },
+
+  async listBySessionIds(sessionIds, options = {}) {
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const database = await initializeDatabase();
+    const filters = [`session_id IN (${placeholders(sessionIds)})`, 'deleted_at IS NULL'];
+
+    if (options.completedOnly) {
+      filters.push('completed = 1');
+    }
+
+    const rows = await database.getAllAsync<ClimbRow>(
+      `
+        SELECT * FROM climbs
+        WHERE ${filters.join(' AND ')}
+        ORDER BY session_id ASC, sort_order ASC, start_time ASC;
+      `,
+      sessionIds,
     );
 
     return rows.map(mapClimb);

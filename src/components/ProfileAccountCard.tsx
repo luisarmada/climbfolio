@@ -57,7 +57,7 @@ export function ProfileAccountCard({
           profilePictureId={profilePictureId}
           showEditBadge={Boolean(onProfilePicturePress)}
         />
-        <View style={styles.copy}>
+        <View style={[styles.copy, onEditPress && styles.copyWithEdit]}>
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.name}>{displayName}</Text>
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.type}>{tagline}</Text>
           <View style={styles.badgeRow}>
@@ -114,6 +114,8 @@ const styles = StyleSheet.create({
   copy: {
     flex: 1,
     minWidth: 0,
+  },
+  copyWithEdit: {
     paddingRight: spacing.xl,
   },
   editButton: {
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 32,
+    lineHeight: 36,
   },
   stat: {
     flex: 1,

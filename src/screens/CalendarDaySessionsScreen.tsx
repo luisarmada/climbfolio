@@ -1,17 +1,15 @@
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
+import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
-import { getSessionDisplayName } from '../features/sessions';
+import { useProfileStore } from '../features/profile';
 import {
-  formatDuration,
   formatSessionDate,
-  formatSessionTime,
-  getLocalDayKey,
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
@@ -22,28 +20,20 @@ function parseLocalDayKey(dayKey: string) {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
-function formatSessionCardSubtitle(summary: SessionSummary) {
-  const date = formatSessionDate(summary.session.startTime);
-  const time = formatSessionTime(summary.session.startTime);
-  const dateTime = `${date}, ${time}`;
-
-  if (summary.session.locationName) {
-    return `${dateTime} @ ${summary.session.locationName}`;
-  }
-
-  return dateTime;
-}
-
 export function CalendarDaySessionsScreen() {
   const router = useRouter();
   const { goBackWithTransition } = useProfileReturnTransition();
   const { date } = useLocalSearchParams<{ date: string }>();
+  const loadProfile = useProfileStore((state) => state.loadProfile);
+  const profile = useProfileStore((state) => state.profile);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const dayKey = Array.isArray(date) ? date[0] : date;
   const titleDate = dayKey ? parseLocalDayKey(dayKey) : new Date();
+  const displayName = profile?.displayName ?? 'Local Climber';
+  const sessionPagination = useSessionActivityPagination(summaries.length);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let isMounted = true;
 
     async function loadSessions() {
@@ -52,9 +42,11 @@ export function CalendarDaySessionsScreen() {
         return;
       }
 
-      const nextSummaries = await sessionSummaryService.listCompletedSessionSummaries();
+      const nextProfile = await loadProfile();
+      const nextSummaries = await sessionSummaryService.listCompletedSessionSummariesForDay(dayKey, {
+        userIds: [nextProfile.userId],
+      });
       const daySummaries = nextSummaries
-        .filter((summary) => getLocalDayKey(new Date(summary.session.startTime)) === dayKey)
         .sort((left, right) => new Date(left.session.startTime).getTime() - new Date(right.session.startTime).getTime());
 
       if (isMounted) {
@@ -68,10 +60,15 @@ export function CalendarDaySessionsScreen() {
     return () => {
       isMounted = false;
     };
-  }, [dayKey]);
+  }, [dayKey, loadProfile]));
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      onScroll={sessionPagination.handleScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topRow}>
         <TouchableOpacity
           activeOpacity={0.72}
@@ -100,30 +97,23 @@ export function CalendarDaySessionsScreen() {
         </AppCard>
       ) : null}
 
-      <View style={styles.sessionList}>
-        {summaries.map((summary) => (
-          <ActivityHighlightCard
-            key={summary.session.id}
-            onPress={() =>
-              router.push({
-                pathname: '/session/[sessionId]',
-                params: {
-                  date: dayKey,
-                  returnTo: 'calendarDay',
-                  sessionId: summary.session.id,
-                },
-              })
-            }
-            stats={[
-              { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
-              { label: 'Climbs', value: String(summary.totalClimbs) },
-              { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
-            ]}
-            subtitle={formatSessionCardSubtitle(summary)}
-            title={getSessionDisplayName(summary.session)}
-          />
-        ))}
-      </View>
+      <SessionActivityList
+        displayName={displayName}
+        onPress={(summary) =>
+          router.push({
+            pathname: '/session/[sessionId]',
+            params: {
+              date: dayKey,
+              returnTo: 'calendarDay',
+              sessionId: summary.session.id,
+            },
+          })
+        }
+        profilePictureId={profile?.profilePictureId}
+        style={styles.sessionList}
+        summaries={summaries}
+        visibleCount={sessionPagination.visibleCount}
+      />
     </ScrollView>
   );
 }

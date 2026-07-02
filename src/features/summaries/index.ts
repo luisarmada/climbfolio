@@ -11,4 +11,11 @@ export {
   sessionSummaryService,
   summarizeAggregate,
 } from './session-summary.service';
-export type { AggregateStats, CalendarStats, SessionSummary } from './session-summary.service';
+export { invalidateSessionSummaryCache } from './session-summary.cache';
+export type {
+  AggregateStats,
+  CalendarStats,
+  CollectionCellSessionSummaryQuery,
+  SessionSummary,
+  SessionSummaryQuery,
+} from './session-summary.service';

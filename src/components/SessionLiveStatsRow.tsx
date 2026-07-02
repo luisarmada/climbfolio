@@ -1,11 +1,14 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '../design/tokens';
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { AppCard } from './AppCard';
 
 type SessionLiveStatsRowProps = {
   attempts: number;
   climbs: number;
-  elapsedSeconds: number;
+  elapsedSeconds?: number;
+  startTime?: string | null;
   timeValue?: string;
 };
 
@@ -18,12 +21,44 @@ export function formatSessionTimer(totalSeconds: number) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export function SessionLiveStatsRow({ attempts, climbs, elapsedSeconds, timeValue }: SessionLiveStatsRowProps) {
+const LiveSessionTimeValue = memo(function LiveSessionTimeValue({ startTime }: { startTime: string | null | undefined }) {
+  const elapsedSeconds = useElapsedSeconds(startTime);
+
+  return <Text style={styles.value}>{formatSessionTimer(elapsedSeconds)}</Text>;
+});
+
+function SessionTimeValue({
+  elapsedSeconds = 0,
+  startTime,
+  timeValue,
+}: {
+  elapsedSeconds?: number;
+  startTime?: string | null;
+  timeValue?: string;
+}) {
+  if (timeValue !== undefined) {
+    return <Text style={styles.value}>{timeValue}</Text>;
+  }
+
+  if (startTime) {
+    return <LiveSessionTimeValue startTime={startTime} />;
+  }
+
+  return <Text style={styles.value}>{formatSessionTimer(elapsedSeconds)}</Text>;
+}
+
+export const SessionLiveStatsRow = memo(function SessionLiveStatsRow({
+  attempts,
+  climbs,
+  elapsedSeconds,
+  startTime,
+  timeValue,
+}: SessionLiveStatsRowProps) {
   return (
     <AppCard style={styles.card}>
       <View style={styles.stat}>
         <Text style={styles.label}>Time</Text>
-        <Text style={styles.value}>{timeValue ?? formatSessionTimer(elapsedSeconds)}</Text>
+        <SessionTimeValue elapsedSeconds={elapsedSeconds} startTime={startTime} timeValue={timeValue} />
       </View>
       <View style={styles.stat}>
         <Text style={styles.label}>Climbs</Text>
@@ -35,7 +70,7 @@ export function SessionLiveStatsRow({ attempts, climbs, elapsedSeconds, timeValu
       </View>
     </AppCard>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

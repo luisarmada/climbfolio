@@ -1,5 +1,6 @@
 import { CreateSessionInput, EndSessionInput, Session, UpdateSessionInput } from '../../domain/models';
 import { GradingScaleType, VGradeRange, normalizeVGradeRange, resolveGradingScale } from '../../domain/gradeScales';
+import { localUserId } from '../../domain/userIdentity';
 import { nowIso } from '../../utils/dates';
 import { createLocalId } from '../../utils/ids';
 import { secondsBetween } from '../../utils/time';
@@ -7,6 +8,7 @@ import { initializeDatabase } from '../db/client';
 
 type SessionRow = {
   id: string;
+  user_id?: string | null;
   name: string | null;
   description: string | null;
   start_time: string;
@@ -25,15 +27,27 @@ type SessionRow = {
   deleted_at: string | null;
 };
 
+export type CompletedSessionQuery = {
+  locationId?: string | null;
+  sessionIds?: string[];
+  startTimeBefore?: string;
+  startTimeFrom?: string;
+  userIds?: string[];
+};
+
 export type SessionRepository = {
   create(input?: CreateSessionInput): Promise<Session>;
   getActive(): Promise<Session | null>;
   getById(sessionId: string): Promise<Session | null>;
-  listCompleted(): Promise<Session[]>;
+  listCompleted(query?: CompletedSessionQuery): Promise<Session[]>;
   listAll(): Promise<Session[]>;
   update(sessionId: string, input: UpdateSessionInput): Promise<Session | null>;
   end(sessionId: string, input?: EndSessionInput): Promise<Session | null>;
 };
+
+function placeholders(values: unknown[]) {
+  return values.map(() => '?').join(', ');
+}
 
 function parseJsonArray(value: string | null | undefined) {
   if (!value) {
@@ -89,6 +103,7 @@ function mapSession(row: SessionRow): Session {
 
   return {
     id: row.id,
+    userId: row.user_id ?? localUserId,
     name: row.name,
     description: row.description,
     startTime: row.start_time,
@@ -120,6 +135,7 @@ export const sessionRepository: SessionRepository = {
     });
     const session: Session = {
       id: input.id ?? createLocalId('session'),
+      userId: input.userId ?? localUserId,
       name: input.name ?? null,
       description: input.description ?? null,
       startTime: input.startTime ?? timestamp,
@@ -141,13 +157,14 @@ export const sessionRepository: SessionRepository = {
     await database.runAsync(
       `
         INSERT INTO sessions (
-          id, name, description, start_time, end_time, duration_seconds, grading_scale_type, grading_scale_name,
+          id, user_id, name, description, start_time, end_time, duration_seconds, grading_scale_type, grading_scale_name,
           grading_scale_grades_json, grading_scale_is_tape, grading_scale_v_ranges_json, location_id, location_name, location_type,
           created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       [
         session.id,
+        session.userId,
         session.name,
         session.description,
         session.startTime,
@@ -192,13 +209,49 @@ export const sessionRepository: SessionRepository = {
     return row ? mapSession(row) : null;
   },
 
-  async listCompleted() {
+  async listCompleted(query = {}) {
+    if (query.userIds?.length === 0 || query.sessionIds?.length === 0) {
+      return [];
+    }
+
     const database = await initializeDatabase();
+    const params: (string | null)[] = [];
+    const filters = ['end_time IS NOT NULL', 'deleted_at IS NULL'];
+
+    if (query.userIds) {
+      filters.push(`user_id IN (${placeholders(query.userIds)})`);
+      params.push(...query.userIds);
+    }
+
+    if (query.sessionIds) {
+      filters.push(`id IN (${placeholders(query.sessionIds)})`);
+      params.push(...query.sessionIds);
+    }
+
+    if (query.startTimeFrom) {
+      filters.push('start_time >= ?');
+      params.push(query.startTimeFrom);
+    }
+
+    if (query.startTimeBefore) {
+      filters.push('start_time < ?');
+      params.push(query.startTimeBefore);
+    }
+
+    if (query.locationId !== undefined) {
+      if (query.locationId === null) {
+        filters.push('location_id IS NULL');
+      } else {
+        filters.push('location_id = ?');
+        params.push(query.locationId);
+      }
+    }
+
     const rows = await database.getAllAsync<SessionRow>(`
       SELECT * FROM sessions
-      WHERE end_time IS NOT NULL AND deleted_at IS NULL
+      WHERE ${filters.join(' AND ')}
       ORDER BY start_time DESC;
-    `);
+    `, params);
 
     return rows.map(mapSession);
   },

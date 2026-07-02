@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import { ToastHost } from '../src/components/ToastHost';
 import { colors, fonts } from '../src/design/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -55,23 +56,30 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          animation: 'none',
-          contentStyle: { backgroundColor: colors.chalk },
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="session/active" options={{ animation: 'none' }} />
-        <Stack.Screen name="session/finish" options={{ animation: 'none' }} />
-        <Stack.Screen name="session/summary" options={{ animation: 'none' }} />
-      </Stack>
+      <View style={styles.app}>
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            animation: 'none',
+            contentStyle: { backgroundColor: colors.chalk },
+            headerShown: false,
+          }}
+        >
+          <Stack.Screen name="session/active" options={{ animation: 'none' }} />
+          <Stack.Screen name="session/finish" options={{ animation: 'none' }} />
+          <Stack.Screen name="session/summary" options={{ animation: 'none' }} />
+        </Stack>
+        <ToastHost />
+      </View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  app: {
+    backgroundColor: colors.chalk,
+    flex: 1,
+  },
   loading: {
     backgroundColor: colors.chalk,
     flex: 1,

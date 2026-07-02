@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { spacing } from '../design/tokens';
+import { ToastHost } from './ToastHost';
 
 type DismissibleModalProps = {
   children: ReactNode;
@@ -16,6 +17,7 @@ export function DismissibleModal({ children, onDismiss, visible }: DismissibleMo
         <View pointerEvents="box-none" style={styles.content}>
           {children}
         </View>
+        {visible ? <ToastHost /> : null}
       </View>
     </Modal>
   );

@@ -1,7 +1,9 @@
 import { attemptRepository, climbRepository, sessionRepository } from '../../data/repositories';
 import { Attempt, Climb, Session } from '../../domain/models';
 import { GradingScaleSnapshot, getGradeVRank } from '../../domain/gradeScales';
-import { getClimbScaleSnapshot, normalizeFeature, warmUpHoldType } from '../climbs';
+import { getClimbScaleSnapshot, getKnownFeatures, normalizeFeature, warmUpHoldType } from '../climbs';
+import { getCollectionGradeIndex, getCollectionScaleKey } from '../collections/collection.service';
+import { getSessionSummaryCacheRevision } from './session-summary.cache';
 
 export type SessionSummary = {
   session: Session;
@@ -41,6 +43,22 @@ export type CalendarStats = {
   restDaysSinceLastSession: number;
   sessionDayKeys: Set<string>;
   weeklyStreak: number;
+};
+
+export type SessionSummaryQuery = {
+  locationId?: string | null;
+  sessionIds?: string[];
+  startTimeBefore?: string;
+  startTimeFrom?: string;
+  userIds?: string[];
+};
+
+export type CollectionCellSessionSummaryQuery = {
+  feature: string;
+  grade: string;
+  locationId?: string | null;
+  scale: GradingScaleSnapshot;
+  userIds?: string[];
 };
 
 function highestGrade(entries: { climb: Climb; scale: Pick<GradingScaleSnapshot, 'gradingScaleVGradeRanges'> }[]) {
@@ -86,6 +104,66 @@ function splitColours(colour: string | null) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+let completedSummaryCache: SessionSummary[] | null = null;
+let completedSummaryCachePromise: Promise<SessionSummary[]> | null = null;
+let completedSummaryCacheRevision = getSessionSummaryCacheRevision();
+
+function ensureCompletedSummaryCacheFresh() {
+  const revision = getSessionSummaryCacheRevision();
+
+  if (revision !== completedSummaryCacheRevision) {
+    completedSummaryCache = null;
+    completedSummaryCachePromise = null;
+    completedSummaryCacheRevision = revision;
+  }
+}
+
+function hasEmptyListFilter(query: SessionSummaryQuery) {
+  return query.userIds?.length === 0 || query.sessionIds?.length === 0;
+}
+
+function canUseWholeHistoryCache(query: SessionSummaryQuery) {
+  return (
+    query.locationId === undefined &&
+    query.sessionIds === undefined &&
+    query.startTimeBefore === undefined &&
+    query.startTimeFrom === undefined
+  );
+}
+
+function filterSummaries(summaries: SessionSummary[], query: SessionSummaryQuery) {
+  if (hasEmptyListFilter(query)) {
+    return [];
+  }
+
+  const userIds = query.userIds ? new Set(query.userIds) : null;
+  const sessionIds = query.sessionIds ? new Set(query.sessionIds) : null;
+
+  return summaries.filter((summary) => {
+    if (userIds && !userIds.has(summary.session.userId)) {
+      return false;
+    }
+
+    if (sessionIds && !sessionIds.has(summary.session.id)) {
+      return false;
+    }
+
+    if (query.startTimeFrom && summary.session.startTime < query.startTimeFrom) {
+      return false;
+    }
+
+    if (query.startTimeBefore && summary.session.startTime >= query.startTimeBefore) {
+      return false;
+    }
+
+    if (query.locationId !== undefined && summary.session.locationId !== query.locationId) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 export function summarizeAggregate(summaries: SessionSummary[]): AggregateStats {
@@ -220,10 +298,25 @@ export function getCalendarStats(summaries: SessionSummary[], date = new Date())
   };
 }
 
-async function summarizeSession(session: Session): Promise<SessionSummary> {
-  const climbs = await climbRepository.listBySessionId(session.id);
-  const attemptsByClimb = await Promise.all(climbs.map((climb) => attemptRepository.listByClimbId(climb.id)));
-  const attempts = attemptsByClimb.flat();
+function groupBy<T>(items: T[], selectKey: (item: T) => string) {
+  const groups = new Map<string, T[]>();
+
+  items.forEach((item) => {
+    const key = selectKey(item);
+    const group = groups.get(key);
+
+    if (group) {
+      group.push(item);
+      return;
+    }
+
+    groups.set(key, [item]);
+  });
+
+  return groups;
+}
+
+function summarizeSessionFromData(session: Session, climbs: Climb[], attempts: Attempt[]): SessionSummary {
   const completed = climbs.filter((climb) => climb.completed);
   const climbEntries = climbs.map((climb) => ({ climb, scale: getClimbScaleSnapshot(climb, session) }));
   const completedEntries = climbEntries.filter((entry) => entry.climb.completed);
@@ -257,8 +350,115 @@ async function summarizeSession(session: Session): Promise<SessionSummary> {
   };
 }
 
+async function summarizeSessions(sessions: Session[]): Promise<SessionSummary[]> {
+  if (sessions.length === 0) {
+    return [];
+  }
+
+  const climbs = await climbRepository.listBySessionIds(sessions.map((session) => session.id));
+  const attempts = await attemptRepository.listByClimbIds(climbs.map((climb) => climb.id));
+  const climbsBySessionId = groupBy(climbs, (climb) => climb.sessionId);
+  const attemptsByClimbId = groupBy(attempts, (attempt) => attempt.climbId);
+
+  return sessions.map((session) => {
+    const sessionClimbs = climbsBySessionId.get(session.id) ?? [];
+    const sessionAttempts = sessionClimbs.flatMap((climb) => attemptsByClimbId.get(climb.id) ?? []);
+
+    return summarizeSessionFromData(session, sessionClimbs, sessionAttempts);
+  });
+}
+
+async function summarizeSession(session: Session): Promise<SessionSummary> {
+  const [summary] = await summarizeSessions([session]);
+  return summary ?? summarizeSessionFromData(session, [], []);
+}
+
+async function loadCompletedSessionSummaries(query: SessionSummaryQuery = {}) {
+  if (hasEmptyListFilter(query)) {
+    return [];
+  }
+
+  const sessions = await sessionRepository.listCompleted({
+    locationId: query.locationId,
+    sessionIds: query.sessionIds,
+    startTimeBefore: query.startTimeBefore,
+    startTimeFrom: query.startTimeFrom,
+    userIds: query.userIds,
+  });
+
+  return summarizeSessions(sessions);
+}
+
+async function getCompletedSummaryCache() {
+  ensureCompletedSummaryCacheFresh();
+
+  if (completedSummaryCache) {
+    return completedSummaryCache;
+  }
+
+  if (completedSummaryCachePromise) {
+    return completedSummaryCachePromise;
+  }
+
+  const revision = getSessionSummaryCacheRevision();
+  completedSummaryCachePromise = loadCompletedSessionSummaries().then((summaries) => {
+    if (revision === getSessionSummaryCacheRevision()) {
+      completedSummaryCache = summaries;
+    }
+
+    return summaries;
+  }).finally(() => {
+    if (revision === getSessionSummaryCacheRevision()) {
+      completedSummaryCachePromise = null;
+    }
+  });
+
+  return completedSummaryCachePromise;
+}
+
+function getLocalDayRange(dayKey: string) {
+  const [year = '0', month = '1', day = '1'] = dayKey.split('-');
+  const start = new Date(Number(year), Number(month) - 1, Number(day));
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+
+  return {
+    startTimeBefore: end.toISOString(),
+    startTimeFrom: start.toISOString(),
+  };
+}
+
+function collectionCellMatchesSummary(summary: SessionSummary, query: CollectionCellSessionSummaryQuery) {
+  const scaleKey = getCollectionScaleKey(query.scale);
+
+  return summary.climbs.some((climb) => {
+    const climbScale = getClimbScaleSnapshot(climb, summary.session);
+
+    return (
+      getCollectionScaleKey(climbScale) === scaleKey &&
+      climb.completed &&
+      getKnownFeatures(climb.holdTypes).includes(query.feature) &&
+      query.scale.gradingScaleGrades[getCollectionGradeIndex(climb.grade, climbScale, query.scale)] === query.grade
+    );
+  });
+}
+
 export const sessionSummaryService = {
   async getSessionSummary(sessionId: string): Promise<SessionSummary | null> {
+    ensureCompletedSummaryCacheFresh();
+
+    const cachedSummary = completedSummaryCache?.find((summary) => summary.session.id === sessionId);
+
+    if (cachedSummary) {
+      return cachedSummary;
+    }
+
+    const [completedSummary] = await loadCompletedSessionSummaries({ sessionIds: [sessionId] });
+
+    if (completedSummary) {
+      return completedSummary;
+    }
+
     const session = await sessionRepository.getById(sessionId);
 
     if (!session) {
@@ -268,28 +468,97 @@ export const sessionSummaryService = {
     return summarizeSession(session);
   },
 
-  async listCompletedSessionSummaries(): Promise<SessionSummary[]> {
-    const sessions = await sessionRepository.listCompleted();
-    return Promise.all(sessions.map(summarizeSession));
+  async listCompletedSessionSummaries(query: SessionSummaryQuery = {}): Promise<SessionSummary[]> {
+    ensureCompletedSummaryCacheFresh();
+
+    if (hasEmptyListFilter(query)) {
+      return [];
+    }
+
+    if (canUseWholeHistoryCache(query)) {
+      return filterSummaries(await getCompletedSummaryCache(), query);
+    }
+
+    if (completedSummaryCache) {
+      return filterSummaries(completedSummaryCache, query);
+    }
+
+    return loadCompletedSessionSummaries(query);
   },
 
-  async getAggregateStats(): Promise<AggregateStats> {
-    const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+  async listCompletedSessionSummariesForDay(dayKey: string, query: Pick<SessionSummaryQuery, 'userIds'> = {}) {
+    return sessionSummaryService.listCompletedSessionSummaries({
+      ...query,
+      ...getLocalDayRange(dayKey),
+    });
+  },
+
+  async listCompletedSessionSummariesForCollectionCell(query: CollectionCellSessionSummaryQuery): Promise<SessionSummary[]> {
+    ensureCompletedSummaryCacheFresh();
+
+    if (query.userIds?.length === 0) {
+      return [];
+    }
+
+    const cachedSummaries = completedSummaryCache ?? (completedSummaryCachePromise ? await completedSummaryCachePromise : null);
+
+    if (cachedSummaries) {
+      return filterSummaries(cachedSummaries, query).filter((summary) => collectionCellMatchesSummary(summary, query));
+    }
+
+    const sessions = await sessionRepository.listCompleted({
+      locationId: query.locationId,
+      userIds: query.userIds,
+    });
+    const sessionIds = sessions.map((session) => session.id);
+
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+    const completedClimbs = await climbRepository.listBySessionIds(sessionIds, { completedOnly: true });
+    const scaleKey = getCollectionScaleKey(query.scale);
+    const matchingSessionIds = new Set<string>();
+
+    completedClimbs.forEach((climb) => {
+      const session = sessionsById.get(climb.sessionId);
+
+      if (!session) {
+        return;
+      }
+
+      const climbScale = getClimbScaleSnapshot(climb, session);
+
+      if (
+        getCollectionScaleKey(climbScale) === scaleKey &&
+        getKnownFeatures(climb.holdTypes).includes(query.feature) &&
+        query.scale.gradingScaleGrades[getCollectionGradeIndex(climb.grade, climbScale, query.scale)] === query.grade
+      ) {
+        matchingSessionIds.add(climb.sessionId);
+      }
+    });
+
+    return sessionSummaryService.listCompletedSessionSummaries({ sessionIds: [...matchingSessionIds] });
+  },
+
+  async getAggregateStats(query: SessionSummaryQuery = {}): Promise<AggregateStats> {
+    const summaries = await sessionSummaryService.listCompletedSessionSummaries(query);
     return summarizeAggregate(summaries);
   },
 
-  async getMonthlyAggregateStats(date = new Date()): Promise<AggregateStats> {
-    const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+  async getMonthlyAggregateStats(date = new Date(), query: SessionSummaryQuery = {}): Promise<AggregateStats> {
+    const summaries = await sessionSummaryService.listCompletedSessionSummaries(query);
     return summarizeAggregate(summaries.filter((summary) => isSameMonth(summary.session.startTime, date)));
   },
 
-  async getWeeklyStreak(date = new Date()): Promise<number> {
-    const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+  async getWeeklyStreak(date = new Date(), query: SessionSummaryQuery = {}): Promise<number> {
+    const summaries = await sessionSummaryService.listCompletedSessionSummaries(query);
     return calculateWeeklyStreak(summaries, date);
   },
 
-  async getCalendarStats(date = new Date()): Promise<CalendarStats> {
-    const summaries = await sessionSummaryService.listCompletedSessionSummaries();
+  async getCalendarStats(date = new Date(), query: SessionSummaryQuery = {}): Promise<CalendarStats> {
+    const summaries = await sessionSummaryService.listCompletedSessionSummaries(query);
     return getCalendarStats(summaries, date);
   },
 };

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useTabScrollToTop } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { SessionLocationPickerModal } from '../components/SessionLocationPickerModal';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
@@ -11,6 +12,8 @@ import { builtInGradingScales } from '../domain/gradeScales';
 import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { useActiveSessionStore } from '../features/sessions';
+import { useRememberedScrollView } from '../hooks/useRememberedScrollView';
+import { smoothScrollViewToTop } from '../utils/scrolling';
 
 const climbingGymImage = require('../assets/images/climbing-gym.png');
 
@@ -30,6 +33,13 @@ export function ClimbScreen() {
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
   const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false);
   const hasActiveSession = Boolean(activeSession);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const rememberedScroll = useRememberedScrollView('/climb', scrollViewRef);
+  const scrollToTop = useCallback(() => {
+    smoothScrollViewToTop(scrollViewRef.current);
+  }, []);
+
+  useTabScrollToTop('climb', scrollToTop);
 
   useEffect(() => {
     void restoreActiveSession();
@@ -78,7 +88,16 @@ export function ClimbScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      nativeID={rememberedScroll.nativeID}
+      ref={scrollViewRef}
+      contentContainerStyle={styles.content}
+      contentOffset={rememberedScroll.initialContentOffset}
+      onContentSizeChange={rememberedScroll.handleContentSizeChange}
+      onScroll={rememberedScroll.handleScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.title}>Climb</Text>
 
       <View

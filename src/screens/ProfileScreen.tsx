@@ -1,30 +1,28 @@
-import { ComponentProps, useCallback, useState } from 'react';
+import { ComponentProps, useCallback, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityHighlightCard } from '../components/ActivityHighlightCard';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
+import { useTabScrollToTop } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
-import { ProfilePicture } from '../components/ProfilePicture';
 import { SavedSessionEditorModal } from '../components/SavedSessionEditorModal';
 import { SectionHeader } from '../components/SectionHeader';
+import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { formatProfileBadge, useProfileStore } from '../features/profile';
-import { getSessionDisplayName } from '../features/sessions';
 import {
   calculateWeeklyStreak,
-  formatDuration,
-  formatSessionDate,
-  formatSessionTime,
   SessionSummary,
   sessionSummaryService,
   summarizeAggregate,
 } from '../features/summaries';
+import { useRememberedScrollView } from '../hooks/useRememberedScrollView';
+import { smoothScrollViewToTop } from '../utils/scrolling';
 
 type FeatherName = ComponentProps<typeof Feather>['name'];
 type DashboardAction = {
@@ -42,18 +40,31 @@ const dashboardActions: DashboardAction[] = [
   { accent: colors.amber, href: '/collection', icon: 'grid', label: 'Collection' },
 ];
 
-function formatSessionHistorySubtitle(summary: SessionSummary) {
-  const date = formatSessionDate(summary.session.startTime);
-  const time = formatSessionTime(summary.session.startTime);
-
-  return `${date}, ${time}`;
-}
-
-function formatSessionHistoryTitle(displayName: string, summary: SessionSummary) {
-  return summary.session.locationName ? `${displayName} @ ${summary.session.locationName}` : displayName;
-}
-
 let cachedProfileSummaries: SessionSummary[] | null = null;
+
+function getSummaryRevision(summary: SessionSummary) {
+  return [
+    summary.session.id,
+    summary.session.updatedAt,
+    summary.totalClimbs,
+    summary.totalAttempts,
+    summary.completedClimbs,
+    summary.highestGradeCompleted ?? '',
+    ...summary.climbs.map((climb) => `${climb.id}:${climb.updatedAt}:${climb.attemptCount}:${climb.completed}`),
+  ].join('|');
+}
+
+function areSummaryListsEqual(left: SessionSummary[], right: SessionSummary[]) {
+  return left.length === right.length && left.every((summary, index) => {
+    const nextSummary = right[index];
+
+    if (!nextSummary) {
+      return false;
+    }
+
+    return getSummaryRevision(summary) === getSummaryRevision(nextSummary);
+  });
+}
 
 export function ProfileScreen() {
   const router = useRouter();
@@ -65,6 +76,14 @@ export function ProfileScreen() {
   const [editingSummary, setEditingSummary] = useState<SessionSummary | null>(null);
   const [isLoading, setIsLoading] = useState(cachedProfileSummaries === null);
   const [isBetasModalVisible, setIsBetasModalVisible] = useState(false);
+  const sessionHistoryPagination = useSessionActivityPagination(summaries.length, 'profile-session-history');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const rememberedScroll = useRememberedScrollView('/profile', scrollViewRef);
+  const scrollToTop = useCallback(() => {
+    smoothScrollViewToTop(scrollViewRef.current);
+  }, []);
+
+  useTabScrollToTop('profile', scrollToTop);
 
   useFocusEffect(useCallback(() => {
     let isMounted = true;
@@ -74,15 +93,21 @@ export function ProfileScreen() {
         setIsLoading(true);
       }
 
-      const [nextSummaries] = await Promise.all([
-        sessionSummaryService.listCompletedSessionSummaries(),
-        loadProfile(),
-        loadClimbingPreferences(),
-      ]);
+      const [nextProfile] = await Promise.all([loadProfile(), loadClimbingPreferences()]);
+      const nextSummaries = await sessionSummaryService.listCompletedSessionSummaries({
+        userIds: [nextProfile.userId],
+      });
 
       if (isMounted) {
-        cachedProfileSummaries = nextSummaries;
-        setSummaries(nextSummaries);
+        setSummaries((currentSummaries) => {
+          if (areSummaryListsEqual(currentSummaries, nextSummaries)) {
+            cachedProfileSummaries = currentSummaries;
+            return currentSummaries;
+          }
+
+          cachedProfileSummaries = nextSummaries;
+          return nextSummaries;
+        });
         setIsLoading(false);
       }
     }
@@ -116,7 +141,19 @@ export function ProfileScreen() {
   }, []);
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      nativeID={rememberedScroll.nativeID}
+      ref={scrollViewRef}
+      contentContainerStyle={styles.content}
+      contentOffset={rememberedScroll.initialContentOffset}
+      onContentSizeChange={rememberedScroll.handleContentSizeChange}
+      onScroll={(event) => {
+        rememberedScroll.handleScroll(event);
+        sessionHistoryPagination.handleScroll(event);
+      }}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topRow}>
         <View>
           <Text style={styles.title}>Profile</Text>
@@ -125,7 +162,10 @@ export function ProfileScreen() {
           activeOpacity={0.7}
           accessibilityLabel="Open profile settings"
           accessibilityRole="button"
-          onPress={() => router.push('/settings')}
+          onPress={() => {
+            rememberedScroll.rememberCurrentScrollOffset();
+            router.push('/settings');
+          }}
           style={styles.iconButton}
         >
           <Feather name="settings" size={23} color={colors.charcoal} />
@@ -135,7 +175,6 @@ export function ProfileScreen() {
       <ProfileAccountCard
         badgeText={badgeText}
         displayName={displayName}
-        onEditPress={() => router.push('/settings/profile')}
         profilePictureId={profile?.profilePictureId}
         stats={[
           { label: 'Sessions', value: String(aggregateStats.sessions) },
@@ -153,7 +192,14 @@ export function ProfileScreen() {
       <View style={styles.dashboardGrid}>
         {dashboardActions.map((action) => {
           const href = action.href;
-          const onPress = href ? () => router.push(href) : action.modal === 'betas' ? () => setIsBetasModalVisible(true) : undefined;
+          const onPress = href
+            ? () => {
+                rememberedScroll.rememberCurrentScrollOffset();
+                router.push(href);
+              }
+            : action.modal === 'betas'
+              ? () => setIsBetasModalVisible(true)
+              : undefined;
 
           return (
             <TouchableOpacity
@@ -188,27 +234,18 @@ export function ProfileScreen() {
           <Text style={styles.emptyCopy}>Completed sessions will appear here after you end a climbing session.</Text>
         </AppCard>
       ) : (
-        <View style={styles.sessionList}>
-          {summaries.map((summary) => (
-            <ActivityHighlightCard
-              actionAccessibilityLabel={`Open actions for ${getSessionDisplayName(summary.session)}`}
-              actionIcon="more-horizontal"
-              detailDescription={summary.session.description}
-              detailTitle={getSessionDisplayName(summary.session)}
-              key={summary.session.id}
-              leadingVisual={<ProfilePicture profilePictureId={profile?.profilePictureId} size={38} />}
-              onActionPress={() => setEditingSummary(summary)}
-              onPress={() => router.push(`/session/${summary.session.id}`)}
-              stats={[
-                { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
-                { label: 'Climbs', value: String(summary.totalClimbs) },
-                { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
-              ]}
-              subtitle={formatSessionHistorySubtitle(summary)}
-              title={formatSessionHistoryTitle(displayName, summary)}
-            />
-          ))}
-        </View>
+        <SessionActivityList
+          actionIcon="more-horizontal"
+          displayName={displayName}
+          onActionPress={setEditingSummary}
+          onPress={(summary) => {
+            rememberedScroll.rememberCurrentScrollOffset();
+            router.push(`/session/${summary.session.id}`);
+          }}
+          profilePictureId={profile?.profilePictureId}
+          summaries={summaries}
+          visibleCount={sessionHistoryPagination.visibleCount}
+        />
       )}
 
       <SavedSessionEditorModal
@@ -397,9 +434,6 @@ const styles = StyleSheet.create({
     height: 38,
     justifyContent: 'center',
     width: 38,
-  },
-  sessionList: {
-    gap: spacing.md,
   },
   title: {
     ...typography.title,

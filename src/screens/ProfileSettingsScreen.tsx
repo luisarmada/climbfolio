@@ -11,6 +11,8 @@ import { resolveSelectedGradingScale } from '../domain/gradeScales';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { formatProfileBadge, useProfileStore } from '../features/profile';
 import { calculateWeeklyStreak, SessionSummary, sessionSummaryService, summarizeAggregate } from '../features/summaries';
+import { useToastStore } from '../features/toasts';
+import { getErrorMessage } from '../utils/errorMessage';
 import { inputLimits, limitInput } from '../utils/inputValidation';
 
 export function ProfileSettingsScreen() {
@@ -20,6 +22,8 @@ export function ProfileSettingsScreen() {
   const loadClimbingPreferences = useClimbingPreferencesStore((state) => state.loadPreferences);
   const loadProfile = useProfileStore((state) => state.loadProfile);
   const updateProfile = useProfileStore((state) => state.updateProfile);
+  const showError = useToastStore((state) => state.showError);
+  const showSuccess = useToastStore((state) => state.showSuccess);
   const profile = useProfileStore((state) => state.profile);
   const isLoading = useProfileStore((state) => state.isLoading);
   const error = useProfileStore((state) => state.error);
@@ -32,11 +36,10 @@ export function ProfileSettingsScreen() {
     let isMounted = true;
 
     async function hydrateProfile() {
-      const [nextProfile, nextSummaries] = await Promise.all([
-        loadProfile(),
-        sessionSummaryService.listCompletedSessionSummaries(),
-        loadClimbingPreferences(),
-      ]);
+      const [nextProfile] = await Promise.all([loadProfile(), loadClimbingPreferences()]);
+      const nextSummaries = await sessionSummaryService.listCompletedSessionSummaries({
+        userIds: [nextProfile.userId],
+      });
 
       if (isMounted) {
         setDisplayName(nextProfile.displayName);
@@ -62,8 +65,13 @@ export function ProfileSettingsScreen() {
   }, [profile]);
 
   async function handleSave() {
-    await updateProfile({ badgePreference: 'best_grade', displayName, tagline });
-    setSavedMessage('Saved locally');
+    try {
+      await updateProfile({ badgePreference: 'best_grade', displayName, tagline });
+      setSavedMessage('Saved locally');
+      showSuccess('Profile saved');
+    } catch (saveError) {
+      showError('Profile was not saved', getErrorMessage(saveError, 'Could not save profile changes.'));
+    }
   }
 
   const canSave = displayName.trim().length > 0 && tagline.trim().length > 0 && !isLoading;
@@ -138,7 +146,7 @@ export function ProfileSettingsScreen() {
       {savedMessage ? <Text style={styles.savedText}>{savedMessage}</Text> : null}
 
       <View style={styles.saveAction}>
-        <AppButton disabled={!canSave} icon="check" onPress={handleSave} title={isLoading ? 'Saving...' : 'Save Profile'} />
+        <AppButton disabled={!canSave} icon="check" onPress={() => void handleSave()} title={isLoading ? 'Saving...' : 'Save Profile'} />
       </View>
     </ScrollView>
   );
