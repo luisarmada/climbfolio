@@ -1,4 +1,4 @@
-import { Platform, ScrollView } from 'react-native';
+import { Platform } from 'react-native';
 
 type ScrollableNode = {
   clientHeight: number;
@@ -7,9 +7,11 @@ type ScrollableNode = {
   scrollTop: number;
 };
 
-type ScrollViewWithNodes = ScrollView & {
+export type ScrollableHandle = {
   getNativeScrollRef?: () => unknown;
   getScrollableNode?: () => unknown;
+  scrollTo?: (options: { animated?: boolean; y: number }) => void;
+  scrollToOffset?: (options: { animated?: boolean; offset: number }) => void;
 };
 
 type GlobalWithWebScroll = typeof globalThis & {
@@ -56,8 +58,8 @@ function getFirstScrollablePageNode() {
   return isScrollableNode(scrollableNode) ? scrollableNode : null;
 }
 
-function getWebScrollableNode(scrollView: ScrollView, allowPageFallback = true) {
-  const handle = scrollView as ScrollViewWithNodes;
+function getWebScrollableNode(scrollView: ScrollableHandle, allowPageFallback = true) {
+  const handle = scrollView;
   const candidates = [handle.getScrollableNode?.(), handle.getNativeScrollRef?.(), scrollView];
 
   return candidates.find(isScrollableNode) ?? (allowPageFallback ? getFirstScrollablePageNode() : null);
@@ -102,27 +104,37 @@ function smoothScrollNodeToTop(node: ScrollableNode) {
   webGlobal.requestAnimationFrame(animateFrame);
 }
 
-export function smoothScrollViewToTop(scrollView: ScrollView | null) {
+export function smoothScrollViewToTop(scrollView: ScrollableHandle | null) {
   if (!scrollView) {
     return;
   }
 
   if (Platform.OS !== 'web') {
-    scrollView.scrollTo({ animated: true, y: 0 });
+    if (typeof scrollView.scrollToOffset === 'function') {
+      scrollView.scrollToOffset({ animated: true, offset: 0 });
+      return;
+    }
+
+    scrollView.scrollTo?.({ animated: true, y: 0 });
     return;
   }
 
   const scrollableNode = getWebScrollableNode(scrollView);
 
   if (!scrollableNode) {
-    scrollView.scrollTo({ animated: true, y: 0 });
+    if (typeof scrollView.scrollToOffset === 'function') {
+      scrollView.scrollToOffset({ animated: true, offset: 0 });
+      return;
+    }
+
+    scrollView.scrollTo?.({ animated: true, y: 0 });
     return;
   }
 
   smoothScrollNodeToTop(scrollableNode);
 }
 
-export function scrollViewToOffset(scrollView: ScrollView | null, offset: number, animated = false) {
+export function scrollViewToOffset(scrollView: ScrollableHandle | null, offset: number, animated = false, allowPageFallback = true) {
   if (!scrollView) {
     return;
   }
@@ -130,14 +142,24 @@ export function scrollViewToOffset(scrollView: ScrollView | null, offset: number
   const nextOffset = Math.max(0, offset);
 
   if (Platform.OS !== 'web') {
-    scrollView.scrollTo({ animated, y: nextOffset });
+    if (typeof scrollView.scrollToOffset === 'function') {
+      scrollView.scrollToOffset({ animated, offset: nextOffset });
+      return;
+    }
+
+    scrollView.scrollTo?.({ animated, y: nextOffset });
     return;
   }
 
-  const scrollableNode = getWebScrollableNode(scrollView);
+  const scrollableNode = getWebScrollableNode(scrollView, allowPageFallback);
 
   if (!scrollableNode) {
-    scrollView.scrollTo({ animated, y: nextOffset });
+    if (typeof scrollView.scrollToOffset === 'function') {
+      scrollView.scrollToOffset({ animated, offset: nextOffset });
+      return;
+    }
+
+    scrollView.scrollTo?.({ animated, y: nextOffset });
     return;
   }
 

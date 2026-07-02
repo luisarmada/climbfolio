@@ -22,6 +22,9 @@ function isSameProfile(left: UserProfile | null, right: UserProfile) {
     left.tagline === right.tagline &&
     left.badgePreference === right.badgePreference &&
     left.profilePictureId === right.profilePictureId &&
+    left.selectedFlairIds.length === right.selectedFlairIds.length &&
+    left.selectedFlairIds.every((flairId, index) => flairId === right.selectedFlairIds[index]) &&
+    left.showStreakFlair === right.showStreakFlair &&
     left.createdAt === right.createdAt &&
     left.updatedAt === right.updatedAt &&
     left.deletedAt === right.deletedAt

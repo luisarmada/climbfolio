@@ -1,7 +1,9 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { StyleProp, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { colors, fonts, radius, spacing } from '../design/tokens';
+import type { ProfileFlairDisplay } from '../features/profile';
 import { AppCard } from './AppCard';
+import { ProfileFlairPill } from './ProfileFlairPill';
 import { ProfilePicture } from './ProfilePicture';
 
 export type ProfileAccountCardStat = {
@@ -17,6 +19,8 @@ type ProfileAccountCardProps = {
   onProfilePicturePress?: () => void;
   profilePictureAccessibilityLabel?: string;
   profilePictureId?: string | null;
+  flairs?: ProfileFlairDisplay[];
+  showStreakFlair?: boolean;
   stats?: ProfileAccountCardStat[];
   streakCount?: number;
   style?: StyleProp<ViewStyle>;
@@ -31,11 +35,23 @@ export function ProfileAccountCard({
   onProfilePicturePress,
   profilePictureAccessibilityLabel,
   profilePictureId,
+  flairs,
+  showStreakFlair = true,
   stats,
   streakCount = 0,
   style,
   tagline,
 }: ProfileAccountCardProps) {
+  const visibleFlairs = flairs ?? [
+    {
+      backgroundColor: 'rgba(229,222,212,0.55)',
+      borderColor: 'rgba(216,208,198,0.9)',
+      id: 'best_grade',
+      label: badgeText,
+      textColor: '#494039',
+    },
+  ];
+
   return (
     <AppCard style={[styles.card, style]}>
       {onEditPress ? (
@@ -60,13 +76,24 @@ export function ProfileAccountCard({
         <View style={[styles.copy, onEditPress && styles.copyWithEdit]}>
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.name}>{displayName}</Text>
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.type}>{tagline}</Text>
-          <View style={styles.badgeRow}>
-            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.bestBadge}>{badgeText}</Text>
-            {streakCount > 0 ? (
-              <View accessibilityLabel={`${streakCount} week streak`} style={styles.streakBadge}>
-                <Text style={styles.streakBadgeText}>{streakCount}</Text>
-                <Ionicons name="flame" size={15} color={colors.charcoal} />
-              </View>
+          <View style={styles.flairRow}>
+            {visibleFlairs.map((flair) => (
+              <ProfileFlairPill
+                backgroundColor={flair.backgroundColor}
+                borderColor={flair.borderColor}
+                key={flair.id}
+                label={flair.label}
+                textColor={flair.textColor}
+              />
+            ))}
+            {showStreakFlair && streakCount > 0 ? (
+              <ProfileFlairPill
+                backgroundColor={colors.amber}
+                borderColor="rgba(30,30,30,0.12)"
+                isStreak
+                label={`${streakCount} week streak`}
+                textColor={colors.charcoal}
+              />
             ) : null}
           </View>
         </View>
@@ -87,25 +114,13 @@ export function ProfileAccountCard({
 }
 
 const styles = StyleSheet.create({
-  badgeRow: {
+  flairRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    minWidth: 0,
-  },
-  bestBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(229,222,212,0.55)',
-    borderRadius: radius.pill,
-    color: '#494039',
-    fontFamily: fonts.extraBold,
-    fontSize: 13,
-    fontWeight: '800',
     maxWidth: '100%',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    minWidth: 0,
   },
   card: {
     padding: spacing.lg,
@@ -160,22 +175,6 @@ const styles = StyleSheet.create({
     color: colors.charcoal,
     fontFamily: fonts.extraBold,
     fontSize: 22,
-    fontWeight: '900',
-  },
-  streakBadge: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: colors.amber,
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    gap: 2,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  streakBadgeText: {
-    color: colors.charcoal,
-    fontFamily: fonts.extraBold,
-    fontSize: 13,
     fontWeight: '900',
   },
   topRow: {

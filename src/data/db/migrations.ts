@@ -172,6 +172,11 @@ export async function runMigrations(database: DatabaseClient) {
       await database.execAsync('CREATE INDEX IF NOT EXISTS idx_sessions_user_completed ON sessions(user_id, end_time, deleted_at);');
     }
 
+    if (currentVersion > 0 && currentVersion < 15) {
+      await database.execAsync(`ALTER TABLE user_profile ADD COLUMN selected_flair_ids_json TEXT NOT NULL DEFAULT '["best_grade"]';`);
+      await database.execAsync('ALTER TABLE user_profile ADD COLUMN show_streak_flair INTEGER NOT NULL DEFAULT 1;');
+    }
+
     await database.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?);',
       [schemaVersion, nowIso()],

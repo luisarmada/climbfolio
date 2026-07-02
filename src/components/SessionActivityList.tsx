@@ -1,108 +1,140 @@
-import { useCallback, useEffect, useState } from 'react';
-import { NativeScrollEvent, NativeSyntheticEvent, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { ReactElement, forwardRef, memo, useCallback } from 'react';
+import {
+  FlatList,
+  FlatListProps,
+  ListRenderItem,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { spacing } from '../design/tokens';
 import { SessionSummary } from '../features/summaries';
 import { SessionActivityCard, SessionActivityCardProps } from './SessionActivityCard';
 
-const initialVisibleSessions = 6;
-const sessionBatchSize = 6;
-const loadMoreThreshold = 220;
-const rememberedVisibleSessionCounts = new Map<string, number>();
-
 type SessionActivityListProps = {
+  actionIcon?: SessionActivityCardProps['actionIcon'];
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  displayName: string;
+  initialContentOffset?: { x: number; y: number };
+  ListHeaderComponent?: ReactElement | null;
+  nativeID?: string;
+  onContentSizeChange?: FlatListProps<SessionSummary>['onContentSizeChange'];
+  onActionPress?: (summary: SessionSummary) => void;
+  onPress: (summary: SessionSummary) => void;
+  onScroll?: FlatListProps<SessionSummary>['onScroll'];
+  profilePictureId?: string | null;
+  scrollEventThrottle?: number;
+  showsVerticalScrollIndicator?: boolean;
+  style?: StyleProp<ViewStyle>;
+  summaries: SessionSummary[];
+};
+
+function SessionActivitySeparator() {
+  return <View style={styles.separator} />;
+}
+
+type SessionActivityRowProps = {
   actionIcon?: SessionActivityCardProps['actionIcon'];
   displayName: string;
   onActionPress?: (summary: SessionSummary) => void;
   onPress: (summary: SessionSummary) => void;
   profilePictureId?: string | null;
-  style?: StyleProp<ViewStyle>;
-  summaries: SessionSummary[];
-  visibleCount: number;
+  summary: SessionSummary;
 };
 
-export function useSessionActivityPagination(totalCount: number, memoryKey?: string) {
-  const [visibleCount, setVisibleCount] = useState(() =>
-    Math.min(rememberedVisibleSessionCounts.get(memoryKey ?? '') ?? initialVisibleSessions, totalCount),
-  );
-
-  useEffect(() => {
-    setVisibleCount((currentCount) => {
-      if (totalCount === 0) {
-        if (memoryKey) {
-          rememberedVisibleSessionCounts.set(memoryKey, 0);
-        }
-
-        return 0;
-      }
-
-      const rememberedCount = memoryKey ? rememberedVisibleSessionCounts.get(memoryKey) ?? 0 : 0;
-      const nextCount = currentCount === 0 ? initialVisibleSessions : Math.max(currentCount, rememberedCount, initialVisibleSessions);
-      return Math.min(nextCount, totalCount);
-    });
-  }, [memoryKey, totalCount]);
-
-  useEffect(() => {
-    if (memoryKey) {
-      rememberedVisibleSessionCounts.set(memoryKey, visibleCount);
-    }
-  }, [memoryKey, visibleCount]);
-
-  const loadMore = useCallback(() => {
-    setVisibleCount((currentCount) => {
-      const nextCount = Math.min(currentCount + sessionBatchSize, totalCount);
-
-      if (memoryKey) {
-        rememberedVisibleSessionCounts.set(memoryKey, nextCount);
-      }
-
-      return nextCount;
-    });
-  }, [memoryKey, totalCount]);
-
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-
-    if (distanceFromBottom <= loadMoreThreshold) {
-      loadMore();
-    }
-  }, [loadMore]);
-
-  return {
-    handleScroll,
-    visibleCount,
-  };
-}
-
-export function SessionActivityList({
+const SessionActivityRow = memo(function SessionActivityRow({
   actionIcon,
   displayName,
   onActionPress,
   onPress,
   profilePictureId,
+  summary,
+}: SessionActivityRowProps) {
+  const handlePress = useCallback(() => onPress(summary), [onPress, summary]);
+  const handleActionPress = useCallback(() => {
+    onActionPress?.(summary);
+  }, [onActionPress, summary]);
+
+  return (
+    <SessionActivityCard
+      actionIcon={actionIcon}
+      displayName={displayName}
+      onActionPress={onActionPress ? handleActionPress : undefined}
+      onPress={handlePress}
+      profilePictureId={profilePictureId}
+      summary={summary}
+    />
+  );
+});
+
+export const SessionActivityList = forwardRef<FlatList<SessionSummary>, SessionActivityListProps>(function SessionActivityList({
+  actionIcon,
+  contentContainerStyle,
+  displayName,
+  initialContentOffset,
+  ListHeaderComponent,
+  nativeID,
+  onContentSizeChange,
+  onActionPress,
+  onPress,
+  onScroll,
+  profilePictureId,
+  scrollEventThrottle,
+  showsVerticalScrollIndicator = false,
   style,
   summaries,
-  visibleCount,
-}: SessionActivityListProps) {
+}, ref) {
+  const listDataStateKey = summaries.length === 0 ? 'empty' : 'populated';
+  const renderItem = useCallback<ListRenderItem<SessionSummary>>(({ item }) => (
+    <SessionActivityRow
+      actionIcon={actionIcon}
+      displayName={displayName}
+      onActionPress={onActionPress}
+      onPress={onPress}
+      profilePictureId={profilePictureId}
+      summary={item}
+    />
+  ), [actionIcon, displayName, onActionPress, onPress, profilePictureId]);
+  const keyExtractor = useCallback((summary: SessionSummary) => summary.session.id, []);
+
+  // FlatList can retain stale virtualized measurements if it mounts with only the
+  // header/empty state and receives rows later. Remount only across empty/populated
+  // transitions; keying by length or IDs would reset scroll on normal updates.
   return (
-    <View style={[styles.list, style]}>
-      {summaries.slice(0, visibleCount).map((summary) => (
-        <SessionActivityCard
-          actionIcon={actionIcon}
-          displayName={displayName}
-          key={summary.session.id}
-          onActionPress={onActionPress ? () => onActionPress(summary) : undefined}
-          onPress={() => onPress(summary)}
-          profilePictureId={profilePictureId}
-          summary={summary}
-        />
-      ))}
-    </View>
+    <FlatList
+      contentContainerStyle={[summaries.length === 0 && styles.emptyContent, contentContainerStyle]}
+      contentOffset={initialContentOffset}
+      data={summaries}
+      initialNumToRender={8}
+      ItemSeparatorComponent={SessionActivitySeparator}
+      key={listDataStateKey}
+      keyExtractor={keyExtractor}
+      ListHeaderComponent={ListHeaderComponent}
+      maxToRenderPerBatch={8}
+      nativeID={nativeID}
+      onContentSizeChange={onContentSizeChange}
+      onScroll={onScroll}
+      ref={ref}
+      removeClippedSubviews={false}
+      renderItem={renderItem}
+      scrollEventThrottle={scrollEventThrottle}
+      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      style={[styles.list, style]}
+      updateCellsBatchingPeriod={32}
+      windowSize={9}
+    />
   );
-}
+});
 
 const styles = StyleSheet.create({
+  emptyContent: {
+    flexGrow: 1,
+  },
   list: {
-    gap: spacing.md,
+    flex: 1,
+  },
+  separator: {
+    height: spacing.md,
   },
 });

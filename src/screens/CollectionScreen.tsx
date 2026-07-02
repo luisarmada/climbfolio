@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
@@ -29,6 +29,7 @@ import { useLocationStore } from '../features/locations';
 import { useClimbingPreferencesStore } from '../features/preferences';
 import { useProfileStore } from '../features/profile';
 import { SessionSummary, sessionSummaryService } from '../features/summaries';
+import { runAfterInteractionsWithFallback } from '../utils/runAfterInteractions';
 
 const fallbackScaleOption = {
   key: 'v_scale',
@@ -97,6 +98,7 @@ export function CollectionScreen() {
   const [goalPickerVisible, setGoalPickerVisible] = useState(false);
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const [selectedGoal, setSelectedGoal] = useState<CollectionGoalTarget | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState(allLocationsFilterId);
   const [selectedScaleKey, setSelectedScaleKey] = useState<string | null>(null);
@@ -143,10 +145,21 @@ export function CollectionScreen() {
       }
     }
 
-    void loadCollection();
+    if (!hasLoadedOnceRef.current) {
+      hasLoadedOnceRef.current = true;
+      void loadCollection();
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const interactionTask = runAfterInteractionsWithFallback(() => {
+      void loadCollection();
+    });
 
     return () => {
       isMounted = false;
+      interactionTask.cancel();
     };
   }, [loadLocations, loadPreferences, loadProfile]));
 

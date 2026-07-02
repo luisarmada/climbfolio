@@ -1,10 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
+import { LoadingSpinner } from '../components/LoadingSpinner';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { useProfileStore } from '../features/profile';
 import {
@@ -15,6 +16,7 @@ import {
   SessionSummary,
   sessionSummaryService,
 } from '../features/summaries';
+import { runAfterInteractionsWithFallback } from '../utils/runAfterInteractions';
 
 type CalendarDay = {
   date: Date;
@@ -87,6 +89,7 @@ export function CalendarScreen() {
   });
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const sessionMonths = useMemo(() => buildSessionMonths(calendarStats.sessionDayKeys), [calendarStats.sessionDayKeys]);
   const summariesByDay = useMemo(() => groupSummariesByDay(summaries), [summaries]);
   const todayKey = getLocalDayKey(new Date());
@@ -107,10 +110,21 @@ export function CalendarScreen() {
       }
     }
 
-    void loadCalendar();
+    if (!hasLoadedOnceRef.current) {
+      hasLoadedOnceRef.current = true;
+      void loadCalendar();
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const interactionTask = runAfterInteractionsWithFallback(() => {
+      void loadCalendar();
+    });
 
     return () => {
       isMounted = false;
+      interactionTask.cancel();
     };
   }, [loadProfile]));
 
@@ -172,8 +186,8 @@ export function CalendarScreen() {
 
       <View style={styles.monthList}>
         {isLoading ? (
-          <AppCard style={styles.calendarCard}>
-            <Text style={styles.calendarHint}>Loading sessions...</Text>
+          <AppCard style={styles.loadingCard}>
+            <LoadingSpinner size="large" />
           </AppCard>
         ) : null}
 
@@ -265,6 +279,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: spacing.lg,
     textAlign: 'center',
+  },
+  loadingCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
   },
   content: {
     paddingBottom: 132,

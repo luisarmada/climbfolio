@@ -55,6 +55,7 @@ export function getTabForPathname(pathname: string): TabKey {
     pathname.startsWith('/settings') ||
     pathname.startsWith('/calendar') ||
     pathname.startsWith('/collection') ||
+    pathname.startsWith('/statistics') ||
     pathname.startsWith('/session/')
   ) {
     return 'profile';

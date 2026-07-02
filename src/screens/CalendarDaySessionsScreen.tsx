@@ -2,10 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppCard } from '../components/AppCard';
 import { useProfileReturnTransition } from '../components/AppShell';
-import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import { SessionActivityList } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { useProfileStore } from '../features/profile';
 import {
@@ -31,7 +32,16 @@ export function CalendarDaySessionsScreen() {
   const dayKey = Array.isArray(date) ? date[0] : date;
   const titleDate = dayKey ? parseLocalDayKey(dayKey) : new Date();
   const displayName = profile?.displayName ?? 'Local Climber';
-  const sessionPagination = useSessionActivityPagination(summaries.length);
+  const openSessionDetail = useCallback((summary: SessionSummary) => {
+    router.push({
+      pathname: '/session/[sessionId]',
+      params: {
+        date: dayKey,
+        returnTo: 'calendarDay',
+        sessionId: summary.session.id,
+      },
+    });
+  }, [dayKey, router]);
 
   useFocusEffect(useCallback(() => {
     let isMounted = true;
@@ -63,58 +73,47 @@ export function CalendarDaySessionsScreen() {
   }, [dayKey, loadProfile]));
 
   return (
-    <ScrollView
+    <SessionActivityList
       contentContainerStyle={styles.content}
-      onScroll={sessionPagination.handleScroll}
-      scrollEventThrottle={16}
+      displayName={displayName}
+      ListHeaderComponent={(
+        <>
+          <View style={styles.topRow}>
+            <TouchableOpacity
+              activeOpacity={0.72}
+              accessibilityLabel="Back to calendar"
+              accessibilityRole="button"
+              onPress={() => goBackWithTransition('/calendar')}
+              style={styles.backButton}
+            >
+              <Feather name="chevron-left" size={24} color={colors.charcoal} />
+            </TouchableOpacity>
+            <View style={styles.titleBlock}>
+              <Text style={styles.title}>{formatSessionDate(titleDate.toISOString())}</Text>
+            </View>
+          </View>
+
+          {isLoading ? (
+            <AppCard style={styles.emptyCard}>
+              <LoadingSpinner size="large" />
+            </AppCard>
+          ) : null}
+
+          {!isLoading && summaries.length === 0 ? (
+            <AppCard style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No sessions found</Text>
+              <Text style={styles.emptyCopy}>There are no saved sessions for this day.</Text>
+            </AppCard>
+          ) : null}
+
+          {!isLoading && summaries.length > 0 ? <View style={styles.sessionListSpacer} /> : null}
+        </>
+      )}
+      onPress={openSessionDetail}
+      profilePictureId={profile?.profilePictureId}
       showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.topRow}>
-        <TouchableOpacity
-          activeOpacity={0.72}
-          accessibilityLabel="Back to calendar"
-          accessibilityRole="button"
-          onPress={() => goBackWithTransition('/calendar')}
-          style={styles.backButton}
-        >
-          <Feather name="chevron-left" size={24} color={colors.charcoal} />
-        </TouchableOpacity>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>{formatSessionDate(titleDate.toISOString())}</Text>
-        </View>
-      </View>
-
-      {isLoading ? (
-        <AppCard style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Loading sessions...</Text>
-        </AppCard>
-      ) : null}
-
-      {!isLoading && summaries.length === 0 ? (
-        <AppCard style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No sessions found</Text>
-          <Text style={styles.emptyCopy}>There are no saved sessions for this day.</Text>
-        </AppCard>
-      ) : null}
-
-      <SessionActivityList
-        displayName={displayName}
-        onPress={(summary) =>
-          router.push({
-            pathname: '/session/[sessionId]',
-            params: {
-              date: dayKey,
-              returnTo: 'calendarDay',
-              sessionId: summary.session.id,
-            },
-          })
-        }
-        profilePictureId={profile?.profilePictureId}
-        style={styles.sessionList}
-        summaries={summaries}
-        visibleCount={sessionPagination.visibleCount}
-      />
-    </ScrollView>
+      summaries={isLoading ? [] : summaries}
+    />
   );
 }
 
@@ -161,8 +160,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
   },
-  sessionList: {
-    gap: spacing.md,
+  sessionListSpacer: {
     marginTop: spacing.xl,
   },
   title: {

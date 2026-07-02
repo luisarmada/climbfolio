@@ -11,6 +11,7 @@ import { useActiveSessionStore } from '../features/sessions';
 import { createRouteHref, rememberRouteForPath, TabKey } from '../navigation/tabState';
 
 type AppShellProps = PropsWithChildren<{
+  returnToProfileUnderlay?: ReactNode;
   showBottomNav?: boolean;
   transition?: 'slideLeft';
   underlay?: ReactNode;
@@ -63,7 +64,7 @@ export function useTabScrollToTop(key: TabKey, handler: () => void) {
   useEffect(() => registerTabScrollToTop(key, handler), [handler, key, registerTabScrollToTop]);
 }
 
-export function AppShell({ children, showBottomNav = true, transition, underlay }: AppShellProps) {
+export function AppShell({ children, returnToProfileUnderlay, showBottomNav = true, transition, underlay }: AppShellProps) {
   const pathname = usePathname();
   const searchParams = useGlobalSearchParams();
   const router = useRouter();
@@ -76,10 +77,20 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
   const initialTransitionProgress = shouldSlideContent ? (shouldSkipInitialTransition ? 0 : 1) : shouldFadeContent && !shouldSkipInitialTransition ? 0 : 1;
   const transitionProgress = useRef(new Animated.Value(initialTransitionProgress)).current;
   const isLeavingSlideScreenRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const [isRevealingProfileUnderlay, setIsRevealingProfileUnderlay] = useState(false);
   const [isBannerClimbPickerVisible, setIsBannerClimbPickerVisible] = useState(false);
   const tabScrollHandlersRef = useRef<Partial<Record<TabKey, () => void>>>({});
   const edges: Edge[] = showBottomNav ? ['top', 'left', 'right'] : ['top', 'bottom', 'left', 'right'];
   const restoreActiveSession = useActiveSessionStore((state) => state.restoreActiveSession);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (hasRequestedActiveSessionRestore) {
@@ -147,7 +158,7 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
   }, [shouldSkipInitialTransition, shouldSlideContent, transitionProgress]);
 
   const leaveSlideScreen = useCallback(
-    (navigate: () => void) => {
+    (navigate: () => void, options: { revealProfileUnderlay?: boolean } = {}) => {
       if (isLeavingSlideScreenRef.current) {
         return;
       }
@@ -158,20 +169,30 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
       }
 
       isLeavingSlideScreenRef.current = true;
-      Animated.timing(transitionProgress, {
-        duration: 260,
-        easing: Easing.in(Easing.cubic),
-        toValue: 1,
-        useNativeDriver: true,
-      }).start(() => {
-        shouldSkipNextEnterTransition = true;
-        navigate();
-        setTimeout(() => {
-          isLeavingSlideScreenRef.current = false;
-        }, 320);
+
+      if (options.revealProfileUnderlay && returnToProfileUnderlay) {
+        setIsRevealingProfileUnderlay(true);
+      }
+
+      requestAnimationFrame(() => {
+        Animated.timing(transitionProgress, {
+          duration: 260,
+          easing: Easing.in(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: true,
+        }).start(() => {
+          shouldSkipNextEnterTransition = true;
+          navigate();
+          setTimeout(() => {
+            isLeavingSlideScreenRef.current = false;
+            if (isMountedRef.current) {
+              setIsRevealingProfileUnderlay(false);
+            }
+          }, 320);
+        });
       });
     },
-    [shouldSlideContent, transitionProgress],
+    [returnToProfileUnderlay, shouldSlideContent, transitionProgress],
   );
 
   const goBackWithTransition = useCallback(
@@ -195,6 +216,8 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
 
     leaveSlideScreen(() => {
       router.replace('/profile');
+    }, {
+      revealProfileUnderlay: true,
     });
   }, [leaveSlideScreen, pathname, router]);
 
@@ -222,7 +245,11 @@ export function AppShell({ children, showBottomNav = true, transition, underlay 
       <View style={styles.container}>
         <ProfileReturnTransitionContext.Provider value={{ goBackWithTransition, returnToProfile }}>
           <TabScrollToTopContext.Provider value={{ registerTabScrollToTop }}>
-            {underlay ? (
+            {isRevealingProfileUnderlay && returnToProfileUnderlay ? (
+              <View pointerEvents="none" style={styles.underlay}>
+                {returnToProfileUnderlay}
+              </View>
+            ) : underlay ? (
               <View pointerEvents="none" style={styles.underlay}>
                 {underlay}
               </View>

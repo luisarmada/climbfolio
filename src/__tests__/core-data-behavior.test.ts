@@ -326,6 +326,8 @@ describe('core data behavior', () => {
     const defaultProfile = await profileRepository.getLocalProfile();
     expect(defaultProfile.userId).toBe(localUserId);
     expect(defaultProfile.profilePictureId).toBe('pfp_mug');
+    expect(defaultProfile.selectedFlairIds).toEqual(['best_grade']);
+    expect(defaultProfile.showStreakFlair).toBe(true);
 
     const updatedProfile = await profileRepository.updateLocalProfile({
       profilePictureId: 'pfp_slab',
@@ -334,6 +336,21 @@ describe('core data behavior', () => {
 
     const reloadedProfile = await profileRepository.getLocalProfile();
     expect(reloadedProfile.profilePictureId).toBe('pfp_slab');
+  });
+
+  it('persists profile flair selections and caps them to three', async () => {
+    const updatedProfile = await profileService.updateLocalProfile({
+      selectedFlairIds: ['founder', 'contributor', 'supporter', 'best_grade'],
+      showStreakFlair: false,
+    });
+
+    expect(updatedProfile.selectedFlairIds).toEqual(['founder', 'contributor', 'supporter']);
+    expect(updatedProfile.showStreakFlair).toBe(false);
+
+    const reloadedProfile = await profileRepository.getLocalProfile();
+
+    expect(reloadedProfile.selectedFlairIds).toEqual(['founder', 'contributor', 'supporter']);
+    expect(reloadedProfile.showStreakFlair).toBe(false);
   });
 
   it('assigns sessions to the local user and filters summaries by user IDs', async () => {
@@ -448,6 +465,62 @@ describe('core data behavior', () => {
 
     expect(summaries.map((summary) => summary.session.id)).toEqual([matching.session.id]);
     expect(summaries[0]?.totalAttempts).toBe(2);
+  });
+
+  it('returns complete activity-list data sets for long saved histories', async () => {
+    const wallId = 'long_history_wall';
+
+    for (let index = 0; index < 50; index += 1) {
+      const day = index < 12 ? 10 : 11 + Math.floor((index - 12) / 4);
+      const hour = 8 + (index % 12);
+      const startTime = `2026-04-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00.000Z`;
+
+      await createCompletedSessionWithClimbsFixture({
+        climbs: [
+          {
+            attemptCount: (index % 3) + 1,
+            colour: index % 2 === 0 ? 'Blue' : 'Green',
+            completed: true,
+            durationSeconds: 360,
+            grade: 'V2',
+            holdTypes: ['Slab'],
+          },
+          {
+            attemptCount: 2,
+            colour: 'Yellow',
+            completed: index % 4 !== 0,
+            durationSeconds: 420,
+            grade: index % 2 === 0 ? 'V3' : 'V1',
+            holdTypes: index % 2 === 0 ? ['Overhang'] : ['Crimp'],
+          },
+        ],
+        locationId: wallId,
+        name: `Long history session ${index + 1}`,
+        startTime,
+      });
+    }
+
+    invalidateSessionSummaryCache();
+    const profileSummaries = await sessionSummaryService.listCompletedSessionSummaries({ userIds: [localUserId] });
+    const homeSummaries = await sessionSummaryService.listCompletedSessionSummaries({
+      userIds: followingService.listFollowingUserIds(localUserId),
+    });
+    const daySummaries = await sessionSummaryService.listCompletedSessionSummariesForDay('2026-04-10', {
+      userIds: [localUserId],
+    });
+    const cellSummaries = await sessionSummaryService.listCompletedSessionSummariesForCollectionCell({
+      feature: 'Slab',
+      grade: 'V2',
+      locationId: wallId,
+      scale: builtInGradingScales[0]!,
+      userIds: [localUserId],
+    });
+
+    expect(profileSummaries).toHaveLength(50);
+    expect(homeSummaries).toHaveLength(50);
+    expect(daySummaries).toHaveLength(12);
+    expect(cellSummaries).toHaveLength(50);
+    expect(new Set(profileSummaries.map((summary) => summary.session.id))).toHaveLength(50);
   });
 
   it('matches legacy one-by-one summary building for bulk, cached, narrow, and lookup paths', async () => {

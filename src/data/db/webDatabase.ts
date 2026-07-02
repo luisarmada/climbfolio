@@ -62,6 +62,8 @@ type UserProfileRow = {
   climber_type: string;
   badge_preference: string;
   profile_picture_uri?: string | null;
+  selected_flair_ids_json?: string | null;
+  show_streak_flair?: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -167,6 +169,8 @@ function readState(): WebDatabaseState {
       profiles: (state.profiles ?? []).map((profile) => ({
         ...profile,
         profile_picture_uri: profile.profile_picture_uri ?? null,
+        selected_flair_ids_json: profile.selected_flair_ids_json ?? '["best_grade"]',
+        show_streak_flair: profile.show_streak_flair ?? 1,
         user_id: profile.user_id ?? localUserId,
       })),
       locations: state.locations ?? [],
@@ -423,17 +427,28 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('insert into user_profile')) {
-      const [id, maybeUserIdOrDisplayName, maybeDisplayNameOrTagline, maybeTaglineOrBadgePreference, maybeBadgePreferenceOrProfilePictureUri, maybeProfilePictureUriOrCreatedAt, maybeCreatedAtOrUpdatedAt, maybeUpdatedAtOrDeletedAt, maybeDeletedAt] = params;
-      const hasUserId = params.length === 9;
-      const userId = hasUserId ? maybeUserIdOrDisplayName : localUserId;
-      const displayName = hasUserId ? maybeDisplayNameOrTagline : maybeUserIdOrDisplayName;
-      const tagline = hasUserId ? maybeTaglineOrBadgePreference : maybeDisplayNameOrTagline;
-      const badgePreference = hasUserId ? maybeBadgePreferenceOrProfilePictureUri : maybeTaglineOrBadgePreference;
-      const hasProfilePictureUri = params.length === 9 || params.length === 8;
-      const profilePictureUri = hasProfilePictureUri ? maybeProfilePictureUriOrCreatedAt : null;
-      const createdAt = hasProfilePictureUri ? maybeCreatedAtOrUpdatedAt : maybeProfilePictureUriOrCreatedAt;
-      const updatedAt = hasProfilePictureUri ? maybeUpdatedAtOrDeletedAt : maybeCreatedAtOrUpdatedAt;
-      const deletedAt = hasProfilePictureUri ? maybeDeletedAt : maybeUpdatedAtOrDeletedAt;
+      const [id] = params;
+      let userId: SqlParams[number] = localUserId;
+      let displayName: SqlParams[number] = 'Local Climber';
+      let tagline: SqlParams[number] = 'Indoor boulderer';
+      let badgePreference: SqlParams[number] = 'best_grade';
+      let profilePictureUri: SqlParams[number] = null;
+      let selectedFlairIdsJson: SqlParams[number] = '["best_grade"]';
+      let showStreakFlair: SqlParams[number] = 1;
+      let createdAt: SqlParams[number] = new Date().toISOString();
+      let updatedAt: SqlParams[number] = createdAt;
+      let deletedAt: SqlParams[number] = null;
+
+      if (params.length === 11) {
+        [, userId, displayName, tagline, badgePreference, profilePictureUri, selectedFlairIdsJson, showStreakFlair, createdAt, updatedAt, deletedAt] = params;
+      } else if (params.length === 9) {
+        [, userId, displayName, tagline, badgePreference, profilePictureUri, createdAt, updatedAt, deletedAt] = params;
+      } else if (params.length === 8) {
+        [, displayName, tagline, badgePreference, profilePictureUri, createdAt, updatedAt, deletedAt] = params;
+      } else {
+        [, displayName, tagline, badgePreference, createdAt, updatedAt, deletedAt] = params;
+      }
+
       this.state.profiles.push({
         id: String(id),
         user_id: userId == null ? localUserId : String(userId),
@@ -443,6 +458,8 @@ class WebDatabase implements DatabaseClient {
         deleted_at: deletedAt == null ? null : String(deletedAt),
         display_name: String(displayName),
         profile_picture_uri: profilePictureUri == null ? null : String(profilePictureUri),
+        selected_flair_ids_json: selectedFlairIdsJson == null ? '["best_grade"]' : String(selectedFlairIdsJson),
+        show_streak_flair: showStreakFlair == null ? 1 : Number(showStreakFlair),
         updated_at: String(updatedAt),
       });
       writeState(this.state);
@@ -570,11 +587,14 @@ class WebDatabase implements DatabaseClient {
     }
 
     if (normalizedSql.startsWith('update user_profile')) {
-      const [displayName, tagline, badgePreference, maybeProfilePictureUriOrUpdatedAt, maybeUpdatedAtOrId, maybeId] = params;
-      const hasProfilePictureUri = params.length === 6;
-      const profilePictureUri = hasProfilePictureUri ? maybeProfilePictureUriOrUpdatedAt : undefined;
-      const updatedAt = hasProfilePictureUri ? maybeUpdatedAtOrId : maybeProfilePictureUriOrUpdatedAt;
-      const id = hasProfilePictureUri ? maybeId : maybeUpdatedAtOrId;
+      const [displayName, tagline, badgePreference] = params;
+      const hasFlairs = params.length === 8;
+      const hasProfilePictureUri = params.length === 8 || params.length === 6;
+      const profilePictureUri = hasProfilePictureUri ? params[3] : undefined;
+      const selectedFlairIdsJson = hasFlairs ? params[4] : undefined;
+      const showStreakFlair = hasFlairs ? params[5] : undefined;
+      const updatedAt = hasFlairs ? params[6] : hasProfilePictureUri ? params[4] : params[3];
+      const id = hasFlairs ? params[7] : hasProfilePictureUri ? params[5] : params[4];
       this.state.profiles = this.state.profiles.map((profile) =>
         profile.id === id
           ? {
@@ -583,6 +603,12 @@ class WebDatabase implements DatabaseClient {
               climber_type: String(tagline),
               display_name: String(displayName),
               profile_picture_uri: hasProfilePictureUri ? (profilePictureUri == null ? null : String(profilePictureUri)) : profile.profile_picture_uri,
+              selected_flair_ids_json: hasFlairs
+                ? selectedFlairIdsJson == null
+                  ? '["best_grade"]'
+                  : String(selectedFlairIdsJson)
+                : profile.selected_flair_ids_json,
+              show_streak_flair: hasFlairs ? (showStreakFlair == null ? 1 : Number(showStreakFlair)) : profile.show_streak_flair,
               updated_at: String(updatedAt),
             }
           : profile,

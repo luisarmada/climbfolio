@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { ReactNode } from 'react';
+import { ReactNode, memo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, spacing } from '../design/tokens';
 import { AppCard } from './AppCard';
@@ -23,7 +23,7 @@ type ActivityHighlightCardProps = {
   title: string;
 };
 
-export function ActivityHighlightCard({
+function ActivityHighlightCardComponent({
   actionAccessibilityLabel,
   actionIcon,
   detailDescription,
@@ -37,47 +37,59 @@ export function ActivityHighlightCard({
   title,
 }: ActivityHighlightCardProps) {
   const hasDetails = Boolean(detailTitle || detailDescription);
+  const cardContent = (
+    <>
+      <View style={[styles.topRow, onActionPress && actionIcon && styles.topRowWithAction]}>
+        <View style={styles.topCopyRow}>
+          {leadingVisual ? <View style={styles.leadingVisual}>{leadingVisual}</View> : null}
+          {icon ? (
+            <View style={styles.iconCircle}>
+              <Feather name={icon} size={19} color={colors.charcoal} />
+            </View>
+          ) : null}
+          <View style={styles.copy}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.title}>{title}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.subtitle}>{subtitle}</Text>
+          </View>
+        </View>
+      </View>
+
+      {hasDetails ? (
+        <View style={styles.detailBlock}>
+          {detailTitle ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailTitle}>{detailTitle}</Text> : null}
+          {detailDescription ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailDescription}>{detailDescription}</Text> : null}
+        </View>
+      ) : null}
+
+      <View style={[styles.statsRow, hasDetails && styles.statsRowAfterDetails]}>
+        {stats.map((stat) => (
+          <View key={`${stat.label}-${stat.value}`} style={styles.stat}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statValue}>{stat.value}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statLabel}>{stat.label}</Text>
+          </View>
+        ))}
+      </View>
+    </>
+  );
 
   return (
     <AppCard style={styles.card}>
-      <View style={styles.contentRow}>
-        <TouchableOpacity
-          activeOpacity={onPress ? 0.78 : 1}
-          accessibilityLabel={onPress ? `Open ${title}` : undefined}
-          accessibilityRole={onPress ? 'button' : undefined}
-          disabled={!onPress}
-          onPress={onPress}
-          style={styles.mainPressArea}
-        >
-          <View style={styles.topRow}>
-            {leadingVisual ? <View style={styles.leadingVisual}>{leadingVisual}</View> : null}
-            {icon ? (
-              <View style={styles.iconCircle}>
-                <Feather name={icon} size={19} color={colors.charcoal} />
-              </View>
-            ) : null}
-            <View style={styles.copy}>
-              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.title}>{title}</Text>
-              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.subtitle}>{subtitle}</Text>
-            </View>
+      <View style={styles.cardSurface}>
+        {onPress ? (
+          <TouchableOpacity
+            activeOpacity={0.78}
+            accessibilityLabel={`Open ${title}`}
+            accessibilityRole="button"
+            onPress={onPress}
+            style={styles.mainPressArea}
+          >
+            {cardContent}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.mainPressArea}>
+            {cardContent}
           </View>
-
-          {hasDetails ? (
-            <View style={styles.detailBlock}>
-              {detailTitle ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailTitle}>{detailTitle}</Text> : null}
-              {detailDescription ? <Text ellipsizeMode="tail" numberOfLines={1} style={styles.detailDescription}>{detailDescription}</Text> : null}
-            </View>
-          ) : null}
-
-          <View style={[styles.statsRow, hasDetails && styles.statsRowAfterDetails]}>
-            {stats.map((stat) => (
-              <View key={`${stat.label}-${stat.value}`} style={styles.stat}>
-                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statValue}>{stat.value}</Text>
-                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        </TouchableOpacity>
+        )}
 
         {onActionPress && actionIcon ? (
           <TouchableOpacity
@@ -95,21 +107,24 @@ export function ActivityHighlightCard({
   );
 }
 
+export const ActivityHighlightCard = memo(ActivityHighlightCardComponent);
+
 const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
     borderRadius: radius.pill,
     height: 38,
     justifyContent: 'center',
+    position: 'absolute',
+    right: spacing.md,
+    top: spacing.md,
     width: 38,
   },
   card: {
-    padding: spacing.lg,
+    position: 'relative',
   },
-  contentRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing.sm,
+  cardSurface: {
+    minHeight: 1,
   },
   copy: {
     flex: 1,
@@ -147,7 +162,7 @@ const styles = StyleSheet.create({
     width: 38,
   },
   mainPressArea: {
-    flex: 1,
+    padding: spacing.lg,
     minWidth: 0,
   },
   stat: {
@@ -194,6 +209,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   topRow: {
+    minWidth: 0,
+  },
+  topRowWithAction: {
+    paddingRight: 44,
+  },
+  topCopyRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.md,
