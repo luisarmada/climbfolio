@@ -1,13 +1,13 @@
 import {
-  CustomGradingScale,
-  GradingScaleSnapshot,
   builtInGradingScales,
   getGradeVRange,
   getGradeVRank,
   getVGradeIndex,
 } from '../../domain/gradeScales';
-import { ClimbingPreferences } from '../../domain/models';
-import { featureSections, getClimbScaleSnapshot, getKnownFeatures, getSessionScaleSnapshot } from '../climbs';
+import type { CustomGradingScale, GradingScaleSnapshot } from '../../domain/gradeScales';
+import type { ClimbingPreferences } from '../../domain/models';
+import { getClimbScaleSnapshot, getSessionScaleSnapshot } from '../climbs/climbScale';
+import { featureSections, getKnownFeature, getKnownFeatures } from '../climbs/climb.options';
 import type { SessionSummary } from '../summaries';
 
 export const allLocationsFilterId = 'all_locations';
@@ -64,6 +64,22 @@ export type CollectionSessionMatch = {
   summary: SessionSummary;
 };
 
+type CollectionGradeIndexLookup = {
+  gradeIndexes: Map<string, number>;
+  gradeIndexByVRank: Map<number, number>;
+};
+
+type CollectionCellSessionSets = {
+  attemptedSessionIds: Set<string>;
+  sentSessionIds: Set<string>;
+  triedSessionIds: Set<string>;
+};
+
+type FeatureRowRegistration = {
+  cellSessionSets: CollectionCellSessionSets[];
+  row: FeatureCollectionRow;
+};
+
 function normalizeScaleName(name: string) {
   return name.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, '_') || 'custom';
 }
@@ -92,36 +108,30 @@ function sessionScaleSnapshot(summary: SessionSummary): GradingScaleSnapshot {
 
 export function buildCollectionScaleOptions(preferences: ClimbingPreferences | null, summaries: SessionSummary[]): CollectionScaleOption[] {
   const options = new Map<string, CollectionScaleOption>();
+  const addScaleOption = (scale: GradingScaleSnapshot) => {
+    const key = getCollectionScaleKey(scale);
+
+    if (!options.has(key)) {
+      options.set(key, {
+        key,
+        label: scale.gradingScaleName,
+        scale,
+      });
+    }
+  };
 
   builtInGradingScales.forEach((scale) => {
-    options.set(getCollectionScaleKey(scale), {
-      key: getCollectionScaleKey(scale),
-      label: scale.gradingScaleName,
-      scale,
-    });
+    addScaleOption(scale);
   });
 
   (preferences?.customScales ?? []).forEach((customScale) => {
-    const scale = customScaleToSnapshot(customScale);
-    const key = getCustomScaleKey(customScale);
-    options.set(key, {
-      key,
-      label: scale.gradingScaleName,
-      scale,
-    });
+    addScaleOption(customScaleToSnapshot(customScale));
   });
 
   summaries.forEach((summary) => {
-    [sessionScaleSnapshot(summary), ...summary.climbs.map((climb) => getClimbScaleSnapshot(climb, summary.session))].forEach((scale) => {
-      const key = getCollectionScaleKey(scale);
-
-      if (!options.has(key)) {
-        options.set(key, {
-          key,
-          label: scale.gradingScaleName,
-          scale,
-        });
-      }
+    addScaleOption(sessionScaleSnapshot(summary));
+    summary.climbs.forEach((climb) => {
+      addScaleOption(getClimbScaleSnapshot(climb, summary.session));
     });
   });
 
@@ -158,11 +168,14 @@ function scaleMatchesSummary(summary: SessionSummary, scaleKey: string) {
 }
 
 export function filterCollectionSummaries(summaries: SessionSummary[], scaleKey: string, locationId: string) {
-  return summaries.filter((summary) => {
-    const scaleMatches = scaleMatchesSummary(summary, scaleKey);
-    const locationMatches = locationId === allLocationsFilterId || summary.session.locationId === locationId;
+  const shouldFilterByLocation = locationId !== allLocationsFilterId;
 
-    return scaleMatches && locationMatches;
+  return summaries.filter((summary) => {
+    if (shouldFilterByLocation && summary.session.locationId !== locationId) {
+      return false;
+    }
+
+    return scaleMatchesSummary(summary, scaleKey);
   });
 }
 
@@ -177,54 +190,96 @@ function createEmptyCells(scale: GradingScaleSnapshot): CollectionCell[] {
   }));
 }
 
-function addUnique(items: string[], item: string) {
-  if (!items.includes(item)) {
+function createCellSessionSets(scale: GradingScaleSnapshot): CollectionCellSessionSets[] {
+  return scale.gradingScaleGrades.map(() => ({
+    attemptedSessionIds: new Set<string>(),
+    sentSessionIds: new Set<string>(),
+    triedSessionIds: new Set<string>(),
+  }));
+}
+
+function addUniqueSessionId(items: string[], itemSet: Set<string>, item: string) {
+  if (!itemSet.has(item)) {
+    itemSet.add(item);
     items.push(item);
   }
 }
 
-function getScaleGradeForVRank(vRank: number, scale: GradingScaleSnapshot) {
-  const matchingGrade = scale.gradingScaleGrades.find((grade) => {
+function createCollectionGradeIndexLookup(scale: GradingScaleSnapshot): CollectionGradeIndexLookup {
+  return {
+    gradeIndexByVRank: new Map<number, number>(),
+    gradeIndexes: new Map(scale.gradingScaleGrades.map((grade, index) => [grade, index])),
+  };
+}
+
+function getTargetScaleGradeIndexForVRank(vRank: number, scale: GradingScaleSnapshot, lookup: CollectionGradeIndexLookup) {
+  const cachedIndex = lookup.gradeIndexByVRank.get(vRank);
+
+  if (cachedIndex !== undefined) {
+    return cachedIndex;
+  }
+
+  const matchingIndex = scale.gradingScaleGrades.findIndex((grade) => {
     const range = getGradeVRange(grade, scale);
     return getVGradeIndex(range.min) <= vRank && getVGradeIndex(range.max) >= vRank;
   });
 
-  if (matchingGrade) {
-    return matchingGrade;
+  if (matchingIndex >= 0) {
+    lookup.gradeIndexByVRank.set(vRank, matchingIndex);
+    return matchingIndex;
   }
 
-  return scale.gradingScaleGrades.reduce((closest, grade) => {
-    const closestRank = getGradeVRank(closest, scale);
-    const gradeRank = getGradeVRank(grade, scale);
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
 
-    return Math.abs(gradeRank - vRank) < Math.abs(closestRank - vRank) ? grade : closest;
-  }, scale.gradingScaleGrades[0] ?? 'V0');
+  scale.gradingScaleGrades.forEach((grade, index) => {
+    const gradeRank = getGradeVRank(grade, scale);
+    const gradeDistance = Math.abs(gradeRank - vRank);
+
+    if (gradeDistance < closestDistance) {
+      closestDistance = gradeDistance;
+      closestIndex = index;
+    }
+  });
+
+  lookup.gradeIndexByVRank.set(vRank, closestIndex);
+  return closestIndex;
 }
 
-export function getCollectionGradeIndex(grade: string, sourceScale: GradingScaleSnapshot, targetScale: GradingScaleSnapshot) {
-  const exactIndex = targetScale.gradingScaleGrades.indexOf(grade);
+function getCollectionGradeIndexWithLookup(
+  grade: string,
+  sourceScale: GradingScaleSnapshot,
+  targetScale: GradingScaleSnapshot,
+  lookup: CollectionGradeIndexLookup,
+) {
+  const exactIndex = lookup.gradeIndexes.get(grade);
 
-  if (exactIndex >= 0) {
+  if (exactIndex !== undefined) {
     return exactIndex;
   }
 
-  const equivalentGrade = getScaleGradeForVRank(getGradeVRank(grade, sourceScale), targetScale);
-  const equivalentIndex = targetScale.gradingScaleGrades.indexOf(equivalentGrade);
+  return getTargetScaleGradeIndexForVRank(getGradeVRank(grade, sourceScale), targetScale, lookup);
+}
 
-  return equivalentIndex >= 0 ? equivalentIndex : 0;
+export function getCollectionGradeIndex(grade: string, sourceScale: GradingScaleSnapshot, targetScale: GradingScaleSnapshot) {
+  return getCollectionGradeIndexWithLookup(grade, sourceScale, targetScale, createCollectionGradeIndexLookup(targetScale));
 }
 
 export function buildCollectionRows(summaries: SessionSummary[], scale: GradingScaleSnapshot, scaleKey = getCollectionScaleKey(scale)) {
-  const rowsByFeature = new Map<string, FeatureCollectionRow>();
+  const rowsByFeature = new Map<string, FeatureRowRegistration>();
+  const gradeLookup = createCollectionGradeIndexLookup(scale);
 
   featureSections.forEach((section) => {
     section.features.forEach((feature) => {
       rowsByFeature.set(feature, {
-        bestSentGrade: null,
-        bestSentIndex: -1,
-        cells: createEmptyCells(scale),
-        feature,
-        sectionTitle: section.title,
+        cellSessionSets: createCellSessionSets(scale),
+        row: {
+          bestSentGrade: null,
+          bestSentIndex: -1,
+          cells: createEmptyCells(scale),
+          feature,
+          sectionTitle: section.title,
+        },
       });
     });
   });
@@ -243,51 +298,63 @@ export function buildCollectionRows(summaries: SessionSummary[], scale: GradingS
         return;
       }
 
-      const gradeIndex = getCollectionGradeIndex(climb.grade, climbScale, scale);
+      const gradeIndex = getCollectionGradeIndexWithLookup(climb.grade, climbScale, scale, gradeLookup);
       const gradeLabel = scale.gradingScaleGrades[gradeIndex] ?? climb.grade;
 
       features.forEach((feature) => {
-        const row = rowsByFeature.get(feature);
-        const cell = row?.cells[gradeIndex];
+        const registration = rowsByFeature.get(feature);
+        const cell = registration?.row.cells[gradeIndex];
+        const cellSets = registration?.cellSessionSets[gradeIndex];
 
-        if (!row || !cell) {
+        if (!registration || !cell || !cellSets) {
           return;
         }
 
         cell.attemptedClimbs += 1;
-        addUnique(cell.attemptedSessionIds, summary.session.id);
+        addUniqueSessionId(cell.attemptedSessionIds, cellSets.attemptedSessionIds, summary.session.id);
 
         if (climb.completed) {
           cell.sentClimbs += 1;
-          addUnique(cell.sentSessionIds, summary.session.id);
+          addUniqueSessionId(cell.sentSessionIds, cellSets.sentSessionIds, summary.session.id);
 
-          if (gradeIndex > row.bestSentIndex) {
-            row.bestSentIndex = gradeIndex;
-            row.bestSentGrade = gradeLabel;
+          if (gradeIndex > registration.row.bestSentIndex) {
+            registration.row.bestSentIndex = gradeIndex;
+            registration.row.bestSentGrade = gradeLabel;
           }
 
           return;
         }
 
         cell.triedClimbs += 1;
-        addUnique(cell.triedSessionIds, summary.session.id);
+        addUniqueSessionId(cell.triedSessionIds, cellSets.triedSessionIds, summary.session.id);
       });
     });
   });
 
   return featureSections.flatMap((section) =>
     section.features
-      .map((feature) => rowsByFeature.get(feature))
+      .map((feature) => rowsByFeature.get(feature)?.row)
       .filter((row): row is FeatureCollectionRow => Boolean(row)),
   );
 }
 
 export function buildDisplayRows(rows: FeatureCollectionRow[]): MatrixDisplayRow[] {
+  const rowsBySectionTitle = new Map<string, FeatureCollectionRow[]>();
+
+  rows.forEach((row) => {
+    const sectionRows = rowsBySectionTitle.get(row.sectionTitle);
+
+    if (sectionRows) {
+      sectionRows.push(row);
+      return;
+    }
+
+    rowsBySectionTitle.set(row.sectionTitle, [row]);
+  });
+
   return featureSections.flatMap<MatrixDisplayRow>((section) => [
     { title: section.title, type: 'section' },
-    ...rows
-      .filter((row) => row.sectionTitle === section.title)
-      .map<MatrixDisplayRow>((row) => ({ row, type: 'feature' })),
+    ...(rowsBySectionTitle.get(section.title) ?? []).map<MatrixDisplayRow>((row) => ({ row, type: 'feature' })),
   ]);
 }
 
@@ -312,62 +379,104 @@ export function isBestSentCell(row: FeatureCollectionRow, gradeIndex: number) {
 }
 
 export function countCollectedCells(rows: FeatureCollectionRow[]) {
-  return rows.reduce((total, row) => total + row.cells.filter((cell) => cell.sentSessionIds.length > 0).length, 0);
+  let total = 0;
+
+  rows.forEach((row) => {
+    row.cells.forEach((cell) => {
+      if (cell.sentSessionIds.length > 0) {
+        total += 1;
+      }
+    });
+  });
+
+  return total;
 }
 
 export function countTriedGapCells(rows: FeatureCollectionRow[]) {
-  return rows.reduce((total, row) => total + row.cells.filter((cell) => cell.sentSessionIds.length === 0 && cell.triedSessionIds.length > 0).length, 0);
+  let total = 0;
+
+  rows.forEach((row) => {
+    row.cells.forEach((cell) => {
+      if (cell.sentSessionIds.length === 0 && cell.triedSessionIds.length > 0) {
+        total += 1;
+      }
+    });
+  });
+
+  return total;
 }
 
 export function countFeaturesCovered(rows: FeatureCollectionRow[]) {
-  return rows.filter((row) => row.cells.some((cell) => cell.sentSessionIds.length > 0)).length;
+  let total = 0;
+
+  rows.forEach((row) => {
+    if (row.cells.some((cell) => cell.sentSessionIds.length > 0)) {
+      total += 1;
+    }
+  });
+
+  return total;
 }
 
 export function buildTriedGoalTargets(rows: FeatureCollectionRow[], scale: GradingScaleSnapshot) {
-  return rows
-    .flatMap((row) =>
-      row.cells.map<CollectionGoalTarget | null>((cell, gradeIndex) => {
-        if (cell.sentSessionIds.length > 0 || cell.triedSessionIds.length === 0) {
-          return null;
-        }
+  const targets: CollectionGoalTarget[] = [];
 
-        return {
-          feature: row.feature,
-          grade: scale.gradingScaleGrades[gradeIndex] ?? 'V0',
-          gradeIndex,
-          priority: gradeIndex + cell.triedSessionIds.length / 100,
-          status: 'tried',
-          triedSessions: cell.triedSessionIds.length,
-        };
-      }),
-    )
-    .filter((target): target is CollectionGoalTarget => Boolean(target))
-    .sort((left, right) => right.priority - left.priority)
-    .slice(0, 3);
+  rows.forEach((row) => {
+    row.cells.forEach((cell, gradeIndex) => {
+      if (cell.sentSessionIds.length > 0 || cell.triedSessionIds.length === 0) {
+        return;
+      }
+
+      targets.push({
+        feature: row.feature,
+        grade: scale.gradingScaleGrades[gradeIndex] ?? 'V0',
+        gradeIndex,
+        priority: gradeIndex + cell.triedSessionIds.length / 100,
+        status: 'tried',
+        triedSessions: cell.triedSessionIds.length,
+      });
+    });
+  });
+
+  return targets.sort((left, right) => right.priority - left.priority).slice(0, 3);
 }
 
 export function buildOpenGoalTargets(rows: FeatureCollectionRow[], scale: GradingScaleSnapshot) {
-  return rows
-    .map<CollectionGoalTarget | null>((row) => {
-      const startIndex = Math.max(0, row.bestSentIndex + 1);
-      const openIndex = row.cells.findIndex((cell, index) => index >= startIndex && cell.sentSessionIds.length === 0);
+  const targets: CollectionGoalTarget[] = [];
 
-      if (openIndex < 0) {
-        return null;
+  rows.forEach((row) => {
+    const startIndex = Math.max(0, row.bestSentIndex + 1);
+
+    for (let openIndex = startIndex; openIndex < row.cells.length; openIndex += 1) {
+      const cell = row.cells[openIndex];
+
+      if (!cell || cell.sentSessionIds.length > 0) {
+        continue;
       }
 
-      return {
+      targets.push({
         feature: row.feature,
         grade: scale.gradingScaleGrades[openIndex] ?? 'V0',
         gradeIndex: openIndex,
         priority: row.bestSentIndex + 1 / 100,
         status: 'open',
-        triedSessions: row.cells[openIndex]?.triedSessionIds.length ?? 0,
-      };
-    })
-    .filter((target): target is CollectionGoalTarget => Boolean(target))
-    .sort((left, right) => right.priority - left.priority)
-    .slice(0, 3);
+        triedSessions: cell.triedSessionIds.length,
+      });
+      return;
+    }
+  });
+
+  return targets.sort((left, right) => right.priority - left.priority).slice(0, 3);
+}
+
+function hasKnownFeature(features: string[], feature: string) {
+  for (const item of features) {
+    if (getKnownFeature(item) === feature) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function findCollectionCellSessionMatches(
@@ -377,29 +486,46 @@ export function findCollectionCellSessionMatches(
   grade: string,
 ) {
   const scaleKey = getCollectionScaleKey(scale);
+  const gradeLookup = createCollectionGradeIndexLookup(scale);
+  const matches: CollectionSessionMatch[] = [];
 
-  return summaries
-    .map<CollectionSessionMatch | null>((summary) => {
-      const matchingClimbs = summary.climbs.filter((climb) => {
-        const climbScale = getClimbScaleSnapshot(climb, summary.session);
+  summaries.forEach((summary) => {
+    let matchingAttempts = 0;
+    let matchingClimbs = 0;
 
-        return (
-          getCollectionScaleKey(climbScale) === scaleKey &&
-          climb.completed &&
-          getKnownFeatures(climb.holdTypes).includes(feature) &&
-          scale.gradingScaleGrades[getCollectionGradeIndex(climb.grade, climbScale, scale)] === grade
-        );
-      });
-
-      if (matchingClimbs.length === 0) {
-        return null;
+    summary.climbs.forEach((climb) => {
+      if (!climb.completed) {
+        return;
       }
 
-      return {
-        matchingAttempts: matchingClimbs.reduce((total, climb) => total + climb.attemptCount, 0),
-        matchingClimbs: matchingClimbs.length,
+      const climbScale = getClimbScaleSnapshot(climb, summary.session);
+
+      if (getCollectionScaleKey(climbScale) !== scaleKey) {
+        return;
+      }
+
+      if (!hasKnownFeature(climb.holdTypes, feature)) {
+        return;
+      }
+
+      const gradeIndex = getCollectionGradeIndexWithLookup(climb.grade, climbScale, scale, gradeLookup);
+
+      if (scale.gradingScaleGrades[gradeIndex] !== grade) {
+        return;
+      }
+
+      matchingAttempts += climb.attemptCount;
+      matchingClimbs += 1;
+    });
+
+    if (matchingClimbs > 0) {
+      matches.push({
+        matchingAttempts,
+        matchingClimbs,
         summary,
-      };
-    })
-    .filter((match): match is CollectionSessionMatch => Boolean(match));
+      });
+    }
+  });
+
+  return matches;
 }

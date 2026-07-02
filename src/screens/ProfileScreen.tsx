@@ -1,20 +1,21 @@
-import { ComponentProps, useCallback, useRef, useState } from 'react';
+import { ComponentProps, useCallback, useMemo, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
 import { AppCard } from '../components/AppCard';
 import { useTabScrollToTop } from '../components/AppShell';
 import { DismissibleModal } from '../components/DismissibleModal';
+import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ProfileAccountCard } from '../components/ProfileAccountCard';
 import { SavedSessionEditorModal } from '../components/SavedSessionEditorModal';
 import { SectionHeader } from '../components/SectionHeader';
-import { SessionActivityList, useSessionActivityPagination } from '../components/SessionActivityList';
+import { SessionActivityList } from '../components/SessionActivityList';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
 import { useClimbingPreferencesStore } from '../features/preferences';
-import { formatProfileBadge, useProfileStore } from '../features/profile';
+import { defaultSelectedProfileFlairIds, formatProfileBadge, resolveProfileFlairs, useProfileStore } from '../features/profile';
 import {
   calculateWeeklyStreak,
   SessionSummary,
@@ -22,19 +23,20 @@ import {
   summarizeAggregate,
 } from '../features/summaries';
 import { useRememberedScrollView } from '../hooks/useRememberedScrollView';
+import { runAfterInteractionsWithFallback } from '../utils/runAfterInteractions';
 import { smoothScrollViewToTop } from '../utils/scrolling';
 
 type FeatherName = ComponentProps<typeof Feather>['name'];
 type DashboardAction = {
   accent: string;
-  href?: '/calendar' | '/collection';
+  href?: '/calendar' | '/collection' | '/statistics';
   icon: FeatherName;
   label: string;
   modal?: 'betas';
 };
 
 const dashboardActions: DashboardAction[] = [
-  { accent: colors.mint, icon: 'bar-chart-2', label: 'Statistics' },
+  { accent: colors.mint, href: '/statistics', icon: 'bar-chart-2', label: 'Statistics' },
   { accent: colors.sky, href: '/calendar', icon: 'calendar', label: 'Calendar' },
   { accent: colors.lavender, icon: 'video', label: 'Betas', modal: 'betas' },
   { accent: colors.amber, href: '/collection', icon: 'grid', label: 'Collection' },
@@ -76,12 +78,30 @@ export function ProfileScreen() {
   const [editingSummary, setEditingSummary] = useState<SessionSummary | null>(null);
   const [isLoading, setIsLoading] = useState(cachedProfileSummaries === null);
   const [isBetasModalVisible, setIsBetasModalVisible] = useState(false);
-  const sessionHistoryPagination = useSessionActivityPagination(summaries.length, 'profile-session-history');
-  const scrollViewRef = useRef<ScrollView>(null);
-  const rememberedScroll = useRememberedScrollView('/profile', scrollViewRef);
+  const activityListRef = useRef<FlatList<SessionSummary>>(null);
+  const hadCachedProfileSummariesOnMountRef = useRef(cachedProfileSummaries !== null);
+  const canRestoreProfileScroll = !isLoading && summaries.length > 0;
+  const rememberedScroll = useRememberedScrollView('/profile', activityListRef, {
+    canRestore: canRestoreProfileScroll,
+    resetRememberedOffsetOnMount: !hadCachedProfileSummariesOnMountRef.current,
+  });
+  const {
+    handleContentSizeChange,
+    handleScroll,
+    nativeID,
+    rememberCurrentScrollOffset,
+  } = rememberedScroll;
   const scrollToTop = useCallback(() => {
-    smoothScrollViewToTop(scrollViewRef.current);
+    smoothScrollViewToTop(activityListRef.current);
   }, []);
+  const openSettings = useCallback(() => {
+    rememberCurrentScrollOffset();
+    router.push('/settings');
+  }, [rememberCurrentScrollOffset, router]);
+  const openSessionDetail = useCallback((summary: SessionSummary) => {
+    rememberCurrentScrollOffset();
+    router.push(`/session/${summary.session.id}`);
+  }, [rememberCurrentScrollOffset, router]);
 
   useTabScrollToTop('profile', scrollToTop);
 
@@ -112,19 +132,33 @@ export function ProfileScreen() {
       }
     }
 
-    void loadSessions();
+    if (cachedProfileSummaries === null) {
+      void loadSessions();
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const interactionTask = runAfterInteractionsWithFallback(() => {
+      void loadSessions();
+    });
 
     return () => {
       isMounted = false;
+      interactionTask.cancel();
     };
   }, [loadClimbingPreferences, loadProfile]));
 
-  const aggregateStats = summarizeAggregate(summaries);
-  const weeklyStreak = calculateWeeklyStreak(summaries);
-  const selectedScale = resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' });
+  const aggregateStats = useMemo(() => summarizeAggregate(summaries), [summaries]);
+  const weeklyStreak = useMemo(() => calculateWeeklyStreak(summaries), [summaries]);
+  const selectedScale = useMemo(
+    () => resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' }),
+    [climbingPreferences],
+  );
   const displayName = profile?.displayName ?? 'Local Climber';
   const tagline = profile?.tagline ?? 'Indoor boulderer';
   const badgeText = formatProfileBadge(summaries, selectedScale);
+  const flairs = resolveProfileFlairs(profile?.selectedFlairIds ?? defaultSelectedProfileFlairIds, badgeText);
   const replaceSessionSummary = useCallback((nextSummary: SessionSummary) => {
     setSummaries((currentSummaries) => {
       const nextSummaries = currentSummaries.map((summary) => (summary.session.id === nextSummary.session.id ? nextSummary : summary));
@@ -141,112 +175,106 @@ export function ProfileScreen() {
   }, []);
 
   return (
-    <ScrollView
-      nativeID={rememberedScroll.nativeID}
-      ref={scrollViewRef}
-      contentContainerStyle={styles.content}
-      contentOffset={rememberedScroll.initialContentOffset}
-      onContentSizeChange={rememberedScroll.handleContentSizeChange}
-      onScroll={(event) => {
-        rememberedScroll.handleScroll(event);
-        sessionHistoryPagination.handleScroll(event);
-      }}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.topRow}>
-        <View>
-          <Text style={styles.title}>Profile</Text>
-        </View>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          accessibilityLabel="Open profile settings"
-          accessibilityRole="button"
-          onPress={() => {
-            rememberedScroll.rememberCurrentScrollOffset();
-            router.push('/settings');
-          }}
-          style={styles.iconButton}
-        >
-          <Feather name="settings" size={23} color={colors.charcoal} />
-        </TouchableOpacity>
-      </View>
-
-      <ProfileAccountCard
-        badgeText={badgeText}
+    <>
+      <SessionActivityList
+        ref={activityListRef}
+        initialContentOffset={canRestoreProfileScroll ? rememberedScroll.initialContentOffset : undefined}
+        nativeID={nativeID}
+        contentContainerStyle={styles.content}
+        actionIcon="more-horizontal"
         displayName={displayName}
-        profilePictureId={profile?.profilePictureId}
-        stats={[
-          { label: 'Sessions', value: String(aggregateStats.sessions) },
-          { label: 'Followers', value: '0' },
-          { label: 'Following', value: '0' },
-        ]}
-        streakCount={weeklyStreak}
-        tagline={tagline}
-      />
-
-      <View style={styles.dashboardHeader}>
-        <Text style={styles.dashboardTitle}>Dashboard</Text>
-      </View>
-
-      <View style={styles.dashboardGrid}>
-        {dashboardActions.map((action) => {
-          const href = action.href;
-          const onPress = href
-            ? () => {
-                rememberedScroll.rememberCurrentScrollOffset();
-                router.push(href);
-              }
-            : action.modal === 'betas'
-              ? () => setIsBetasModalVisible(true)
-              : undefined;
-
-          return (
+        ListHeaderComponent={(
+        <>
+          <View style={styles.topRow}>
+            <View>
+              <Text style={styles.title}>Profile</Text>
+            </View>
             <TouchableOpacity
-              activeOpacity={0.72}
-              accessibilityLabel={onPress ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
+              activeOpacity={0.7}
+              accessibilityLabel="Open profile settings"
               accessibilityRole="button"
-              key={action.label}
-              onPress={onPress}
-              style={styles.dashboardButton}
+              onPress={openSettings}
+              style={styles.iconButton}
             >
-              <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
-                <Feather name={action.icon} size={21} color={colors.charcoal} />
-              </View>
-              <Text style={styles.dashboardButtonText}>{action.label}</Text>
+              <Feather name="settings" size={23} color={colors.charcoal} />
             </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <SectionHeader title="Session History" />
-
-      {isLoading ? (
-        <AppCard style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Loading sessions...</Text>
-        </AppCard>
-      ) : summaries.length === 0 ? (
-        <AppCard style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Feather name="calendar" size={26} color={colors.charcoal} />
           </View>
-          <Text style={styles.emptyTitle}>No sessions logged</Text>
-          <Text style={styles.emptyCopy}>Completed sessions will appear here after you end a climbing session.</Text>
-        </AppCard>
-      ) : (
-        <SessionActivityList
-          actionIcon="more-horizontal"
-          displayName={displayName}
-          onActionPress={setEditingSummary}
-          onPress={(summary) => {
-            rememberedScroll.rememberCurrentScrollOffset();
-            router.push(`/session/${summary.session.id}`);
-          }}
-          profilePictureId={profile?.profilePictureId}
-          summaries={summaries}
-          visibleCount={sessionHistoryPagination.visibleCount}
-        />
-      )}
+
+          <ProfileAccountCard
+            badgeText={badgeText}
+            displayName={displayName}
+            flairs={flairs}
+            profilePictureId={profile?.profilePictureId}
+            showStreakFlair={profile?.showStreakFlair ?? true}
+            stats={[
+              { label: 'Sessions', value: String(aggregateStats.sessions) },
+              { label: 'Followers', value: '0' },
+              { label: 'Following', value: '0' },
+            ]}
+            streakCount={weeklyStreak}
+            tagline={tagline}
+          />
+
+          <View style={styles.dashboardHeader}>
+            <Text style={styles.dashboardTitle}>Dashboard</Text>
+          </View>
+
+          <View style={styles.dashboardGrid}>
+            {dashboardActions.map((action) => {
+              const href = action.href;
+              const onPress = href
+                ? () => {
+                    rememberCurrentScrollOffset();
+                    router.push(href);
+                  }
+                : action.modal === 'betas'
+                  ? () => setIsBetasModalVisible(true)
+                  : undefined;
+
+              return (
+                <TouchableOpacity
+                  activeOpacity={0.72}
+                  accessibilityLabel={onPress ? `Open ${action.label}` : `${action.label} dashboard placeholder`}
+                  accessibilityRole="button"
+                  key={action.label}
+                  onPress={onPress}
+                  style={styles.dashboardButton}
+                >
+                  <View style={[styles.dashboardIcon, { backgroundColor: action.accent }]}>
+                    <Feather name={action.icon} size={21} color={colors.charcoal} />
+                  </View>
+                  <Text style={styles.dashboardButtonText}>{action.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <SectionHeader title="Session History" />
+
+          {isLoading ? (
+            <AppCard style={styles.emptyState}>
+              <LoadingSpinner size="large" />
+            </AppCard>
+          ) : summaries.length === 0 ? (
+            <AppCard style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Feather name="calendar" size={26} color={colors.charcoal} />
+              </View>
+              <Text style={styles.emptyTitle}>No sessions logged</Text>
+              <Text style={styles.emptyCopy}>Completed sessions will appear here after you end a climbing session.</Text>
+            </AppCard>
+          ) : null}
+        </>
+        )}
+        onContentSizeChange={handleContentSizeChange}
+        onScroll={handleScroll}
+        onActionPress={setEditingSummary}
+        onPress={openSessionDetail}
+        profilePictureId={profile?.profilePictureId}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        summaries={isLoading ? [] : summaries}
+      />
 
       <SavedSessionEditorModal
         onDeleted={removeSessionSummary}
@@ -285,7 +313,7 @@ export function ProfileScreen() {
           <AppButton icon="check" onPress={() => setIsBetasModalVisible(false)} title="Got it" />
         </AppCard>
       </DismissibleModal>
-    </ScrollView>
+    </>
   );
 }
 

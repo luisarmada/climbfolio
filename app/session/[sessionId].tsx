@@ -40,7 +40,7 @@ export default function SessionDetailRoute() {
   const { homeScrollOffset, returnTo } = useLocalSearchParams<{ homeScrollOffset?: string; returnTo?: string }>();
 
   return (
-    <AppShell transition="slideLeft" underlay={getSessionDetailUnderlay(returnTo, homeScrollOffset)}>
+    <AppShell returnToProfileUnderlay={<ProfileScreen />} transition="slideLeft" underlay={getSessionDetailUnderlay(returnTo, homeScrollOffset)}>
       <SessionDetailScreen />
     </AppShell>
   );

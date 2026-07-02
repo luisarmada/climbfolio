@@ -1,4 +1,4 @@
-export const schemaVersion = 14;
+export const schemaVersion = 15;
 
 export const createSchemaSql = `
 PRAGMA foreign_keys = ON;
@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS user_profile (
   climber_type TEXT NOT NULL,
   badge_preference TEXT NOT NULL,
   profile_picture_uri TEXT,
+  selected_flair_ids_json TEXT NOT NULL DEFAULT '["best_grade"]',
+  show_streak_flair INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT

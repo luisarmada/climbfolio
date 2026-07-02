@@ -134,7 +134,6 @@ export function SessionFinishScreen() {
       const endedSession = await endSession(sessionFinalizationDraft);
 
       if (endedSession) {
-        showSuccess('Session saved');
         router.replace({ pathname: '/session/summary', params: { sessionId: endedSession.id } });
       }
     } catch (saveError) {

@@ -1,6 +1,7 @@
 import { profileRepository } from '../../data/repositories';
 import { UpdateUserProfileInput, UserProfile } from '../../domain/models';
 import { inputLimits, normalizeSingleLineInput } from '../../utils/inputValidation';
+import { normalizeSelectedProfileFlairIds } from './profileFlairs';
 
 function normalizeProfileInput(input: UpdateUserProfileInput): UpdateUserProfileInput {
   return {
@@ -14,6 +15,8 @@ function normalizeProfileInput(input: UpdateUserProfileInput): UpdateUserProfile
         ? undefined
         : normalizeSingleLineInput(input.displayName, inputLimits.profileDisplayName),
     profilePictureId: input.profilePictureId === undefined ? undefined : input.profilePictureId.trim(),
+    selectedFlairIds: input.selectedFlairIds === undefined ? undefined : normalizeSelectedProfileFlairIds(input.selectedFlairIds),
+    showStreakFlair: input.showStreakFlair,
   };
 }
 

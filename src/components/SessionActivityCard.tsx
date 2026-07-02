@@ -1,4 +1,4 @@
-import { ComponentProps } from 'react';
+import { ComponentProps, memo, useMemo } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { getSessionDisplayName } from '../features/sessions';
 import { formatDuration, formatSessionDate, formatSessionTime, SessionSummary } from '../features/summaries';
@@ -26,7 +26,7 @@ function formatSessionActivityTitle(displayName: string, summary: SessionSummary
   return summary.session.locationName ? `${displayName} @ ${summary.session.locationName}` : displayName;
 }
 
-export function SessionActivityCard({
+function SessionActivityCardComponent({
   actionAccessibilityLabel,
   actionIcon,
   displayName,
@@ -36,6 +36,20 @@ export function SessionActivityCard({
   summary,
 }: SessionActivityCardProps) {
   const sessionDisplayName = getSessionDisplayName(summary.session);
+  const leadingVisual = useMemo(
+    () => <ProfilePicture profilePictureId={profilePictureId} size={38} />,
+    [profilePictureId],
+  );
+  const stats = useMemo(
+    () => [
+      { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
+      { label: 'Climbs', value: String(summary.totalClimbs) },
+      { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
+    ],
+    [summary.highestGradeCompleted, summary.session.durationSeconds, summary.totalClimbs],
+  );
+  const subtitle = useMemo(() => formatSessionActivitySubtitle(summary), [summary]);
+  const title = useMemo(() => formatSessionActivityTitle(displayName, summary), [displayName, summary]);
 
   return (
     <ActivityHighlightCard
@@ -43,16 +57,14 @@ export function SessionActivityCard({
       actionIcon={actionIcon}
       detailDescription={summary.session.description}
       detailTitle={sessionDisplayName}
-      leadingVisual={<ProfilePicture profilePictureId={profilePictureId} size={38} />}
+      leadingVisual={leadingVisual}
       onActionPress={onActionPress}
       onPress={onPress}
-      stats={[
-        { label: 'Time', value: formatDuration(summary.session.durationSeconds) },
-        { label: 'Climbs', value: String(summary.totalClimbs) },
-        { label: 'Best', value: summary.highestGradeCompleted ?? 'None' },
-      ]}
-      subtitle={formatSessionActivitySubtitle(summary)}
-      title={formatSessionActivityTitle(displayName, summary)}
+      stats={stats}
+      subtitle={subtitle}
+      title={title}
     />
   );
 }
+
+export const SessionActivityCard = memo(SessionActivityCardComponent);

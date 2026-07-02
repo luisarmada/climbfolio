@@ -1,5 +1,11 @@
 import { ProfileBadgePreference, UpdateUserProfileInput, UserProfile } from '../../domain/models';
 import { localUserId } from '../../domain/userIdentity';
+import {
+  defaultSelectedProfileFlairIds,
+  normalizeSelectedProfileFlairIds,
+  parseSelectedProfileFlairIdsJson,
+  serializeSelectedProfileFlairIds,
+} from '../../features/profile/profileFlairs';
 import { defaultProfilePictureId } from '../../features/profile/profilePictures';
 import { nowIso } from '../../utils/dates';
 import { initializeDatabase } from '../db/client';
@@ -13,6 +19,8 @@ type UserProfileRow = {
   climber_type: string;
   badge_preference: string;
   profile_picture_uri?: string | null;
+  selected_flair_ids_json?: string | null;
+  show_streak_flair?: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -27,6 +35,8 @@ const defaultProfile = {
   badgePreference: 'best_grade' as ProfileBadgePreference,
   displayName: 'Local Climber',
   profilePictureId: defaultProfilePictureId,
+  selectedFlairIds: defaultSelectedProfileFlairIds,
+  showStreakFlair: true,
   tagline: 'Indoor boulderer',
   userId: localUserId,
 };
@@ -39,6 +49,8 @@ function mapProfile(row: UserProfileRow): UserProfile {
     deletedAt: row.deleted_at,
     displayName: row.display_name,
     profilePictureId: row.profile_picture_uri ?? defaultProfile.profilePictureId,
+    selectedFlairIds: parseSelectedProfileFlairIdsJson(row.selected_flair_ids_json),
+    showStreakFlair: row.show_streak_flair == null ? defaultProfile.showStreakFlair : Boolean(row.show_streak_flair),
     tagline: row.climber_type,
     userId: row.user_id ?? defaultProfile.userId,
     updatedAt: row.updated_at,
@@ -55,6 +67,8 @@ async function createDefaultProfile() {
     deletedAt: null,
     displayName: defaultProfile.displayName,
     profilePictureId: defaultProfile.profilePictureId,
+    selectedFlairIds: defaultProfile.selectedFlairIds,
+    showStreakFlair: defaultProfile.showStreakFlair,
     tagline: defaultProfile.tagline,
     userId: defaultProfile.userId,
     updatedAt: timestamp,
@@ -63,8 +77,9 @@ async function createDefaultProfile() {
   await database.runAsync(
     `
       INSERT INTO user_profile (
-        id, user_id, display_name, climber_type, badge_preference, profile_picture_uri, created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        id, user_id, display_name, climber_type, badge_preference, profile_picture_uri, selected_flair_ids_json,
+        show_streak_flair, created_at, updated_at, deleted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `,
     [
       profile.id,
@@ -73,6 +88,8 @@ async function createDefaultProfile() {
       profile.tagline,
       profile.badgePreference,
       profile.profilePictureId,
+      serializeSelectedProfileFlairIds(profile.selectedFlairIds),
+      profile.showStreakFlair ? 1 : 0,
       profile.createdAt,
       profile.updatedAt,
       profile.deletedAt,
@@ -102,6 +119,8 @@ export const profileRepository: ProfileRepository = {
       badgePreference: defaultProfile.badgePreference,
       displayName: input.displayName?.trim() || current.displayName,
       profilePictureId: input.profilePictureId?.trim() || current.profilePictureId,
+      selectedFlairIds: input.selectedFlairIds === undefined ? current.selectedFlairIds : normalizeSelectedProfileFlairIds(input.selectedFlairIds),
+      showStreakFlair: input.showStreakFlair ?? current.showStreakFlair,
       tagline: input.tagline?.trim() || current.tagline,
       updatedAt,
     };
@@ -109,10 +128,20 @@ export const profileRepository: ProfileRepository = {
     await database.runAsync(
       `
         UPDATE user_profile
-        SET display_name = ?, climber_type = ?, badge_preference = ?, profile_picture_uri = ?, updated_at = ?
+        SET display_name = ?, climber_type = ?, badge_preference = ?, profile_picture_uri = ?, selected_flair_ids_json = ?,
+            show_streak_flair = ?, updated_at = ?
         WHERE id = ?;
       `,
-      [next.displayName, next.tagline, next.badgePreference, next.profilePictureId, next.updatedAt, next.id],
+      [
+        next.displayName,
+        next.tagline,
+        next.badgePreference,
+        next.profilePictureId,
+        serializeSelectedProfileFlairIds(next.selectedFlairIds),
+        next.showStreakFlair ? 1 : 0,
+        next.updatedAt,
+        next.id,
+      ],
     );
 
     return next;

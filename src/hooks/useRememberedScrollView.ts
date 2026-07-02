@@ -1,11 +1,11 @@
 import { RefObject, useCallback, useLayoutEffect, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView } from 'react-native';
-import { getRememberedScrollOffset, rememberScrollOffset } from '../navigation/tabState';
-import { scrollViewToOffset } from '../utils/scrolling';
+import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { clearRememberedScrollOffset, getRememberedScrollOffset, rememberScrollOffset } from '../navigation/tabState';
+import { ScrollableHandle, scrollViewToOffset } from '../utils/scrolling';
 
-const restoreRetryDelayMs = 70;
-const restoreRetryCount = 10;
+const restoreRetryDelayMs = 50;
+const restoreRetryCount = 2;
 const restoreOffsetTolerance = 2;
 let rememberedScrollViewId = 0;
 
@@ -21,7 +21,6 @@ type WebScrollableNode = {
 type GlobalWithDocument = typeof globalThis & {
   document?: {
     getElementById: (id: string) => unknown;
-    querySelectorAll: (selector: string) => ArrayLike<unknown>;
   };
 };
 
@@ -65,24 +64,17 @@ function getWebScrollNode(nativeID: string) {
   return isScrollableNode(scrollableNode) ? scrollableNode : null;
 }
 
-function getFirstVisibleWebScrollNode() {
-  const documentRef = (globalThis as GlobalWithDocument).document;
-
-  if (!documentRef) {
-    return null;
-  }
-
-  const scrollableNode = Array.from(documentRef.querySelectorAll('*')).find((node) => isScrollableNode(node) && canRememberWebScrollNode(node));
-
-  return isScrollableNode(scrollableNode) ? scrollableNode : null;
-}
-
 type RememberedScrollViewOptions = {
+  canRestore?: boolean;
   initialOffset?: number;
+  resetRememberedOffsetOnMount?: boolean;
 };
 
-export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObject<ScrollView>, options: RememberedScrollViewOptions = {}) {
+export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObject<ScrollableHandle>, options: RememberedScrollViewOptions = {}) {
+  const canRestore = options.canRestore ?? true;
+  const resetRememberedOffsetOnMountRef = useRef(Boolean(options.resetRememberedOffsetOnMount));
   const nativeIDRef = useRef<string | null>(null);
+  const webScrollNodeRef = useRef<WebScrollableNode | null>(null);
 
   if (!nativeIDRef.current) {
     rememberedScrollViewId += 1;
@@ -92,14 +84,26 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
   const nativeID = nativeIDRef.current;
   const initialContentOffsetRef = useRef({
     x: 0,
-    y: Math.max(getRememberedScrollOffset(routeKey), options.initialOffset ?? 0),
+    y: Math.max(resetRememberedOffsetOnMountRef.current ? 0 : getRememberedScrollOffset(routeKey), options.initialOffset ?? 0),
   });
   const isRestoringRef = useRef(initialContentOffsetRef.current.y > 0);
   const restoreTargetOffsetRef = useRef(initialContentOffsetRef.current.y);
   const restoreTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
+  const findWebScrollNode = useCallback(() => {
+    const cachedNode = webScrollNodeRef.current;
+
+    if (cachedNode && canRememberWebScrollNode(cachedNode)) {
+      return cachedNode;
+    }
+
+    const nextNode = getWebScrollNode(nativeID);
+    webScrollNodeRef.current = nextNode;
+    return nextNode;
+  }, [nativeID]);
+
   const scrollWebNodeToOffset = useCallback((offset: number) => {
-    const scrollNode = getWebScrollNode(nativeID);
+    const scrollNode = findWebScrollNode();
 
     if (!scrollNode) {
       return false;
@@ -107,7 +111,7 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
 
     scrollNode.scrollTop = Math.max(0, offset);
     return true;
-  }, [nativeID]);
+  }, [findWebScrollNode]);
 
   const stopRestore = useCallback(() => {
     if (restoreTimerRef.current) {
@@ -124,6 +128,11 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
       restoreTimerRef.current = null;
     }
 
+    if (!canRestore) {
+      isRestoringRef.current = false;
+      return;
+    }
+
     if (offset <= 0) {
       isRestoringRef.current = false;
       return;
@@ -133,7 +142,7 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
     restoreTargetOffsetRef.current = offset;
 
     if (!scrollWebNodeToOffset(offset)) {
-      scrollViewToOffset(scrollViewRef.current, offset);
+      scrollViewToOffset(scrollViewRef.current, offset, false, false);
     }
 
     if (retriesRemaining <= 0) {
@@ -147,13 +156,23 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
     restoreTimerRef.current = globalThis.setTimeout(() => {
       restoreScrollOffset(offset, retriesRemaining - 1);
     }, restoreRetryDelayMs);
-  }, [routeKey, scrollViewRef]);
+  }, [canRestore, routeKey, scrollViewRef, scrollWebNodeToOffset]);
+
+  useLayoutEffect(() => {
+    if (resetRememberedOffsetOnMountRef.current) {
+      clearRememberedScrollOffset(routeKey);
+    }
+  }, [routeKey]);
 
   useLayoutEffect(() => {
     restoreScrollOffset(initialContentOffsetRef.current.y, 1);
   }, [restoreScrollOffset]);
 
   const rememberObservedOffset = useCallback((offset: number) => {
+    if (!canRestore) {
+      return;
+    }
+
     const restoreTargetOffset = restoreTargetOffsetRef.current;
 
     if (isRestoringRef.current && offset < restoreTargetOffset - restoreOffsetTolerance) {
@@ -166,7 +185,7 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
 
     restoreTargetOffsetRef.current = offset;
     rememberScrollOffset(routeKey, offset);
-  }, [routeKey]);
+  }, [canRestore, routeKey]);
 
   const rememberProtectedOffset = useCallback((offset: number) => {
     const nextOffset = Math.max(0, offset);
@@ -177,15 +196,20 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
   }, [routeKey]);
 
   const rememberCurrentWebScrollOffset = useCallback(() => {
-    const scrollNode = getWebScrollNode(nativeID) ?? getFirstVisibleWebScrollNode();
-
-    if (!scrollNode || !canRememberWebScrollNode(scrollNode)) {
+    if (!canRestore) {
       return null;
     }
 
-    rememberProtectedOffset(scrollNode.scrollTop);
-    return scrollNode.scrollTop;
-  }, [nativeID, rememberProtectedOffset]);
+    const scrollNode = findWebScrollNode();
+
+    if (scrollNode && canRememberWebScrollNode(scrollNode)) {
+      rememberProtectedOffset(scrollNode.scrollTop);
+      return scrollNode.scrollTop;
+    }
+
+    const rememberedOffset = getRememberedScrollOffset(routeKey);
+    return rememberedOffset > 0 ? rememberedOffset : null;
+  }, [canRestore, findWebScrollNode, rememberProtectedOffset, routeKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -199,7 +223,11 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
   );
 
   useLayoutEffect(() => {
-    const scrollNode = getWebScrollNode(nativeID);
+    if (!canRestore) {
+      return undefined;
+    }
+
+    const scrollNode = findWebScrollNode();
 
     if (!scrollNode?.addEventListener) {
       return undefined;
@@ -222,7 +250,7 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
 
       scrollNode.removeEventListener?.('scroll', handleWebScroll);
     };
-  }, [nativeID, rememberObservedOffset, rememberProtectedOffset]);
+  }, [canRestore, findWebScrollNode, rememberObservedOffset, rememberProtectedOffset]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -235,12 +263,16 @@ export function useRememberedScrollView(routeKey: string, scrollViewRef: RefObje
   }, [rememberObservedOffset]);
 
   const handleContentSizeChange = useCallback(() => {
+    if (!canRestore) {
+      return;
+    }
+
     if (restoreTargetOffsetRef.current <= 0) {
       return;
     }
 
-    restoreScrollOffset(restoreTargetOffsetRef.current, 3);
-  }, [restoreScrollOffset]);
+    restoreScrollOffset(restoreTargetOffsetRef.current, 1);
+  }, [canRestore, restoreScrollOffset]);
 
   return {
     handleContentSizeChange,

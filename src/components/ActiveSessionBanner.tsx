@@ -3,7 +3,6 @@ import { memo, useEffect } from 'react';
 import { usePathname, useRouter } from 'expo-router';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
-import { formatDuration } from '../features/summaries';
 import { useActiveSessionStore } from '../features/sessions';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 
@@ -16,6 +15,27 @@ function formatClimbLabel(grade: string, colour: string | null) {
 
 function formatAttemptLabel(attemptCount: number) {
   return `${attemptCount} ${attemptCount === 1 ? 'attempt' : 'attempts'}`;
+}
+
+function formatBannerDuration(seconds: number) {
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+
+  if (wholeSeconds < 60) {
+    return `${wholeSeconds}s`;
+  }
+
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${minutes}m`;
 }
 
 function ensurePulseAnimation() {
@@ -56,7 +76,7 @@ const BannerSessionDetail = memo(function BannerSessionDetail({
 
   return (
     <Text numberOfLines={1} style={styles.detail}>
-      {formatDuration(elapsedSeconds)} | {statusLabel}
+      {formatBannerDuration(elapsedSeconds)} | {statusLabel}
     </Text>
   );
 });

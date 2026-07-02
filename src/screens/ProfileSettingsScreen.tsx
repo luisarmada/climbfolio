@@ -9,7 +9,13 @@ import { ProfileAccountCard } from '../components/ProfileAccountCard';
 import { colors, fonts, radius, spacing, typography } from '../design/tokens';
 import { resolveSelectedGradingScale } from '../domain/gradeScales';
 import { useClimbingPreferencesStore } from '../features/preferences';
-import { formatProfileBadge, useProfileStore } from '../features/profile';
+import {
+  formatProfileBadge,
+  defaultSelectedProfileFlairIds,
+  maxSelectedProfileFlairs,
+  resolveProfileFlairs,
+  useProfileStore,
+} from '../features/profile';
 import { calculateWeeklyStreak, SessionSummary, sessionSummaryService, summarizeAggregate } from '../features/summaries';
 import { useToastStore } from '../features/toasts';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -79,6 +85,9 @@ export function ProfileSettingsScreen() {
   const weeklyStreak = calculateWeeklyStreak(summaries);
   const selectedScale = resolveSelectedGradingScale(climbingPreferences ?? { customScales: [], selectedGradingScaleId: 'v_scale' });
   const badgeText = formatProfileBadge(summaries, selectedScale);
+  const flairs = resolveProfileFlairs(profile?.selectedFlairIds ?? defaultSelectedProfileFlairIds, badgeText);
+  const flairSummary = `${profile?.selectedFlairIds.length ?? 1} of ${maxSelectedProfileFlairs} selected`;
+  const streakSummary = profile?.showStreakFlair ?? true ? 'Streak on' : 'Streak off';
 
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -100,9 +109,11 @@ export function ProfileSettingsScreen() {
       <ProfileAccountCard
         badgeText={badgeText}
         displayName={displayName.trim() || 'Local Climber'}
+        flairs={flairs}
         onProfilePicturePress={() => router.push('/settings/profile-picture')}
         profilePictureAccessibilityLabel="Choose profile picture"
         profilePictureId={profile?.profilePictureId}
+        showStreakFlair={profile?.showStreakFlair ?? true}
         stats={[
           { label: 'Sessions', value: String(aggregateStats.sessions) },
           { label: 'Followers', value: '0' },
@@ -140,6 +151,28 @@ export function ProfileSettingsScreen() {
             value={tagline}
           />
         </AppCard>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Flairs</Text>
+        <TouchableOpacity
+          activeOpacity={0.76}
+          accessibilityLabel="Manage profile flairs"
+          accessibilityRole="button"
+          onPress={() => router.push('/settings/profile-flairs')}
+          style={styles.settingsRow}
+        >
+          <View style={styles.settingsRowIcon}>
+            <Feather name="award" size={19} color={colors.charcoal} />
+          </View>
+          <View style={styles.settingsRowCopy}>
+            <Text style={styles.settingsRowTitle}>Profile flairs</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.settingsRowMeta}>
+              {flairSummary} | {streakSummary}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={19} color={colors.muted} />
+        </TouchableOpacity>
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -227,6 +260,44 @@ const styles = StyleSheet.create({
     ...typography.sectionTitle,
     color: colors.charcoal,
     marginBottom: spacing.md,
+  },
+  settingsRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.stone,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 66,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  settingsRowCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  settingsRowIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(185,153,242,0.28)',
+    borderRadius: radius.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  settingsRowMeta: {
+    color: colors.muted,
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  settingsRowTitle: {
+    color: colors.charcoal,
+    fontFamily: fonts.extraBold,
+    fontSize: 16,
+    fontWeight: '800',
   },
   title: {
     ...typography.title,
